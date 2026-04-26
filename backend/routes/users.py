@@ -1,0 +1,65 @@
+import uuid
+from fastapi import APIRouter, HTTPException, Header
+from pydantic import BaseModel
+from backend.database import get_conn
+from backend.auth import hash_password, verify_password, create_token, get_user_by_token
+
+router = APIRouter(prefix="/users", tags=["users"])
+
+
+class UserRegister(BaseModel):
+    username: str
+    email: str
+    password: str
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/register")
+def register(body: UserRegister):
+    if len(body.username.strip()) < 2:
+        raise HTTPException(400, "Username too short")
+    if len(body.password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+
+    conn = get_conn()
+    if conn.execute("SELECT id FROM users WHERE email=?", (body.email,)).fetchone():
+        conn.close()
+        raise HTTPException(400, "Email already registered")
+    if conn.execute("SELECT id FROM users WHERE username=?", (body.username,)).fetchone():
+        conn.close()
+        raise HTTPException(400, "Username taken")
+
+    user_id = str(uuid.uuid4())[:12]
+    conn.execute(
+        "INSERT INTO users (id, username, email, password_hash) VALUES (?,?,?,?)",
+        (user_id, body.username.strip(), body.email.lower(), hash_password(body.password))
+    )
+    conn.commit()
+    conn.close()
+
+    token = create_token(user_id)
+    return {"token": token, "user_id": user_id, "username": body.username}
+
+
+@router.post("/login")
+def login(body: UserLogin):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM users WHERE email=?", (body.email.lower(),)).fetchone()
+    conn.close()
+    if not row or not verify_password(body.password, row["password_hash"]):
+        raise HTTPException(401, "Invalid email or password")
+    token = create_token(row["id"])
+    return {"token": token, "user_id": row["id"], "username": row["username"]}
+
+
+@router.get("/me")
+def me(authorization: str = Header(...)):
+    token = authorization.removeprefix("Bearer ").strip()
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "Invalid or expired token")
+    return {"user_id": user["id"], "username": user["username"], "email": user["email"]}
