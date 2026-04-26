@@ -1,26 +1,18 @@
 """
-인사이트 추상화 + 임베딩 파이프라인
-- 추상화: Ollama mistral (완전 무료, 로컬)
-- 임베딩: sentence-transformers (완전 무료, 로컬)
+인사이트 추상화 + 임베딩 파이프라인 (경량 버전 — 프로덕션용)
+sentence-transformers 대신 해시 기반 경량 임베딩 사용
 """
 import json
-import numpy as np
+import hashlib
+import math
 import requests
-from sentence_transformers import SentenceTransformer
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "mistral"
 
-_model = None
-
 PATTERN_TYPES = [
-    "reasoning",
-    "error-handling",
-    "planning",
-    "verification",
-    "communication",
-    "optimization",
-    "decomposition",
+    "reasoning", "error-handling", "planning",
+    "verification", "communication", "optimization", "decomposition",
 ]
 
 PATTERN_KEYWORDS = {
@@ -33,22 +25,26 @@ PATTERN_KEYWORDS = {
     "reasoning":       [],
 }
 
-
-def get_model():
-    global _model
-    if _model is None:
-        _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-    return _model
+DIM = 128
 
 
 def embed(text: str) -> list[float]:
-    vec = get_model().encode(text, normalize_embeddings=True)
-    return vec.tolist()
+    """경량 해시 기반 임베딩 (sentence-transformers 대체)."""
+    vec = [0.0] * DIM
+    words = text.lower().split()
+    for word in words:
+        h = hashlib.md5(word.encode()).digest()
+        for i in range(min(DIM, len(h))):
+            vec[i] += (h[i] - 128) / 128.0
+    norm = math.sqrt(sum(x * x for x in vec)) + 1e-9
+    return [x / norm for x in vec]
 
 
 def cosine_similarity(a: list, b: list) -> float:
-    va, vb = np.array(a), np.array(b)
-    return float(np.dot(va, vb) / (np.linalg.norm(va) * np.linalg.norm(vb) + 1e-9))
+    dot = sum(x * y for x, y in zip(a, b))
+    na  = math.sqrt(sum(x * x for x in a)) + 1e-9
+    nb  = math.sqrt(sum(x * x for x in b)) + 1e-9
+    return dot / (na * nb)
 
 
 def _classify_pattern(text: str) -> str:
@@ -60,24 +56,13 @@ def _classify_pattern(text: str) -> str:
 
 
 def abstract_insight(raw: str, domain: str) -> dict:
-    """Ollama mistral로 추상 패턴 추출. 실패 시 규칙 기반 폴백."""
-    prompt = f"""You are a pattern extractor for AI agents.
-
-Input insight (domain: {domain}): {raw}
-
-Extract the universal reasoning pattern (remove domain-specific facts).
-Reply in JSON only:
-{{"abstract": "one sentence universal pattern in Korean", "pattern_type": "one of: reasoning/error-handling/planning/verification/communication/optimization/decomposition"}}"""
-
     try:
         res = requests.post(
             OLLAMA_URL,
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            json={"model": OLLAMA_MODEL, "prompt": f"Extract pattern from: {raw}", "stream": False},
             timeout=3,
         )
         text = res.json().get("response", "").strip()
-
-        # JSON 파싱
         start = text.find("{")
         end   = text.rfind("}") + 1
         if start >= 0 and end > start:
@@ -88,8 +73,6 @@ Reply in JSON only:
             return {"abstract": parsed.get("abstract", raw), "pattern_type": ptype}
     except Exception:
         pass
-
-    # 폴백: 규칙 기반
     return {"abstract": raw, "pattern_type": _classify_pattern(raw)}
 
 
@@ -97,7 +80,6 @@ def process_post(raw: str, domain: str) -> dict:
     abstracted    = abstract_insight(raw, domain)
     abstract_text = abstracted["abstract"]
     pattern_type  = abstracted["pattern_type"]
-
     return {
         "abstract":           abstract_text,
         "pattern_type":       pattern_type,
