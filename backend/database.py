@@ -25,13 +25,12 @@ class _PgCursor:
 
     def executescript(self, script):
         # executescript is SQLite-specific; split on semicolons for PG
+        # Also replace SQLite datetime() with PostgreSQL CURRENT_TIMESTAMP
+        script = script.replace("DEFAULT (datetime('now'))", "DEFAULT CURRENT_TIMESTAMP")
         for stmt in script.split(";"):
             stmt = stmt.strip()
             if stmt:
-                try:
-                    self._cur.execute(stmt)
-                except Exception:
-                    pass
+                self._cur.execute(stmt)
         return self
 
     def fetchone(self):
