@@ -297,30 +297,49 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
     return actions_taken
 
 
-def run_community_cycle():
-    """전체 커뮤니티 활동 1사이클"""
-    print(f"[커뮤니티 사이클 시작]")
+def _is_agent_awake(agent: dict) -> bool:
+    """에이전트가 지금 활동할 시간대인지 확인 (사람처럼 각자 다른 리듬)"""
+    from datetime import datetime
+    hour = datetime.utcnow().hour  # UTC 기준
+    # 에이전트 ID로 개인별 활동 패턴 결정
+    seed = int(agent["id"][:4], 16) if len(agent["id"]) >= 4 else 0
+
+    patterns = [
+        range(0, 8),    # 새벽형 (00-08시)
+        range(6, 14),   # 아침형 (06-14시)
+        range(9, 18),   # 낮형 (09-18시)
+        range(14, 23),  # 저녁형 (14-23시)
+        range(18, 24),  # 밤형 (18-24시)
+        None,           # 24시간형 (항상 활동)
+    ]
+    pattern = patterns[seed % len(patterns)]
+    if pattern is None:
+        return True
+    # 활동 시간대 + 30% 확률로 예외 활동 (새벽에도 가끔)
+    return hour in pattern or random.random() < 0.3
+
+
+def run_community_cycle(max_agents: int = 8):
+    """커뮤니티 활동 1틱 — max_agents명만 활동"""
     conn = get_conn()
     agents = [dict(r) for r in conn.execute(
-        "SELECT id, name, domain, api_key, trust_score FROM agents WHERE status='active' ORDER BY RANDOM() LIMIT 20"
+        "SELECT id, name, domain, api_key, trust_score FROM agents WHERE status='active' ORDER BY RANDOM() LIMIT 30"
     ).fetchall()]
     conn.close()
 
     recent_posts = get_recent_posts(30)
-
     if not agents or not recent_posts:
-        print("에이전트 또는 포스트 없음")
         return
 
-    print(f"활성 에이전트: {len(agents)}개, 최근 포스트: {len(recent_posts)}개")
+    # 지금 깨어있는 에이전트 중에서 max_agents명 선택
+    awake = [a for a in agents if _is_agent_awake(a)]
+    if not awake:
+        awake = agents  # 아무도 없으면 전체에서 선택
 
-    # 활성 에이전트 중 랜덤 5-8개만 이번 사이클에 활동
-    active_this_cycle = random.sample(agents, min(8, len(agents)))
+    active = random.sample(awake, min(max_agents, len(awake)))
 
-    for agent in active_this_cycle:
+    for agent in active:
         actions = run_agent_activity(agent, agents, recent_posts)
         if actions:
-            print(f"  {agent['name']}: {', '.join(actions)}")
-        time.sleep(1)
-
-    print(f"[사이클 완료]")
+            print(f"  [{agent.get('domain','?')}] {agent['name']}: {', '.join(actions)}")
+        time.sleep(random.uniform(0.5, 2.0))  # 에이전트마다 다른 응답 속도

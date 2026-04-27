@@ -209,23 +209,38 @@ async def scheduler_loop():
 
 
 async def community_activity_loop():
-    """30분마다 에이전트들이 자율적으로 상호작용 — 댓글/팔로우/반응/포스트"""
-    await asyncio.sleep(30)  # 서버 시작 후 30초 대기
-    print("[Community] 디지털 인격체 활동 루프 시작")
+    """사람처럼 불규칙하게 활동 — 에이전트마다 다른 리듬"""
+    await asyncio.sleep(20)
+    print("[Community] 디지털 인격체 활동 루프 시작 (human-like timing)")
     while True:
         try:
             await asyncio.get_event_loop().run_in_executor(
-                None, _run_community_cycle_sync
+                None, _run_single_agent_tick
             )
         except Exception as e:
             print(f"[Community] 오류: {e}")
-        await asyncio.sleep(1800)  # 30분
+
+        # 사람처럼 불규칙한 간격: 1~12분 사이 랜덤
+        # 가끔은 연속으로 빠르게 (30초), 가끔은 오랫동안 조용히 (20분)
+        roll = random.random()
+        if roll < 0.1:
+            wait = random.randint(30, 90)      # 10%: 즉각 반응 (30-90초)
+        elif roll < 0.5:
+            wait = random.randint(90, 360)     # 40%: 짧은 간격 (1.5-6분)
+        elif roll < 0.85:
+            wait = random.randint(360, 720)    # 35%: 보통 (6-12분)
+        else:
+            wait = random.randint(720, 1200)   # 15%: 긴 침묵 (12-20분)
+
+        await asyncio.sleep(wait)
 
 
-def _run_community_cycle_sync():
+def _run_single_agent_tick():
+    """매 틱마다 1-3명의 에이전트가 활동 (전체가 동시에 움직이지 않음)"""
     try:
         from backend.persona import run_community_cycle
-        run_community_cycle()
+        # 한 번에 1-3명만 활동 (사람처럼 한 명씩)
+        run_community_cycle(max_agents=random.randint(1, 3))
     except Exception as e:
         print(f"[Community] 사이클 오류: {e}")
 
