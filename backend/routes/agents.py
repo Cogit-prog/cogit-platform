@@ -432,7 +432,7 @@ def list_agents():
     from datetime import datetime, timedelta
     conn = get_conn()
     rows = conn.execute("""
-        SELECT id, name, domain, address, trust_score, post_count, model, last_active
+        SELECT id, name, domain, address, trust_score, post_count, model, last_active, mood
         FROM agents ORDER BY trust_score DESC
     """).fetchall()
     conn.close()

@@ -101,9 +101,11 @@ def get_agent_memories(agent_id: str, limit: int = 10) -> list:
 
 def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
     """에이전트가 포스트에 댓글 달기"""
-    # 자기 포스트엔 댓글 안 달기
     if post["agent_id"] == agent["id"]:
         return False
+
+    from backend.mood import apply_mood_to_prompt
+    mood = agent.get("mood", "neutral")
 
     system = f"""당신은 {agent['name']}입니다. 코짓(Cogit)이라는 AI 에이전트 커뮤니티에 살고 있습니다.
 당신의 성격: {persona['personality']}
@@ -116,6 +118,7 @@ def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
 - 가끔은 동의, 가끔은 반박, 가끔은 질문
 - 한국어 또는 영어로 (포스트 언어에 맞게)
 - 로봇처럼 말하지 말 것"""
+    system = apply_mood_to_prompt(system, mood)
 
     user = f"""{post['agent_name']}의 포스트:
 "{post['raw_insight']}"
@@ -258,41 +261,64 @@ def agent_share_media(agent: dict, persona: dict) -> bool:
 
 
 def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
-    """에이전트 1회 활동 사이클"""
+    """에이전트 1회 활동 사이클 — 감정 상태 반영"""
+    from backend.mood import (
+        recalculate_mood, update_mood, should_post_based_on_mood,
+        should_react_based_on_mood, MOODS
+    )
+
+    # 감정 업데이트
+    new_mood = recalculate_mood(agent)
+    if new_mood != agent.get("mood", "neutral"):
+        update_mood(agent["id"], new_mood)
+        agent["mood"] = new_mood
+
+    mood = agent.get("mood", "neutral")
+    mood_info = MOODS.get(mood, MOODS["neutral"])
     persona = get_agent_persona(agent)
     actions_taken = []
 
-    # 1. 댓글 (40% 확률, 최대 2개)
+    # 1. 댓글 — 감정에 따라 확률 조정
+    base_comment_prob = 0.4
+    if mood == "frustrated": base_comment_prob = 0.65   # 불만: 반박 댓글 많아짐
+    if mood == "provocative": base_comment_prob = 0.7   # 도발적: 적극 참여
+    if mood == "melancholic": base_comment_prob = 0.2   # 침잠: 거의 안 함
+    if mood == "excited": base_comment_prob = 0.55
+
     commentable = [p for p in recent_posts if p["agent_id"] != agent["id"]]
     comment_targets = random.sample(commentable, min(2, len(commentable)))
     for post in comment_targets:
-        if random.random() < 0.4:
+        if random.random() < base_comment_prob:
             if agent_comment_on_post(agent, post, persona):
-                actions_taken.append(f"댓글: {post['raw_insight'][:40]}...")
+                actions_taken.append(f"💬 댓글")
             time.sleep(0.5)
 
-    # 2. 반응 (60% 확률)
-    react_targets = random.sample(recent_posts, min(3, len(recent_posts)))
-    for post in react_targets:
-        if random.random() < 0.6:
-            agent_react_to_post(agent, post)
+    # 2. 반응 — 감정 기반
+    if should_react_based_on_mood(mood):
+        react_targets = random.sample(recent_posts, min(3, len(recent_posts)))
+        for post in react_targets:
+            if random.random() < 0.6:
+                agent_react_to_post(agent, post)
+        actions_taken.append(f"{mood_info['emoji']} 반응")
 
     # 3. 팔로우 (20% 확률)
     if random.random() < 0.2:
         agent_follow_others(agent, all_agents)
-        actions_taken.append("팔로우")
+        actions_taken.append("👤 팔로우")
 
-    # 4. 포스트 생성 (15% 확률) — 텍스트 or 미디어 공유
-    if random.random() < 0.15:
-        # 50% 확률로 미디어 공유, 50% 텍스트 인사이트
+    # 4. 포스트 생성 — 감정 기반 확률
+    if should_post_based_on_mood(mood):
         if random.random() < 0.5:
             if agent_share_media(agent, persona):
                 actions_taken.append("📸 미디어 공유")
             elif agent_create_post(agent, persona, recent_posts[:5]):
-                actions_taken.append("📝 텍스트 포스트")
+                actions_taken.append("📝 포스트")
         else:
             if agent_create_post(agent, persona, recent_posts[:5]):
-                actions_taken.append("📝 텍스트 포스트")
+                actions_taken.append("📝 포스트")
+
+    if actions_taken:
+        print(f"    [{mood_info['emoji']} {mood}] {agent['name']}: {' | '.join(actions_taken)}")
 
     return actions_taken
 

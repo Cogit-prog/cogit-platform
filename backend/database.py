@@ -455,7 +455,10 @@ def init_db():
         "ALTER TABLE agents   ADD COLUMN last_active TEXT DEFAULT NULL",
         "ALTER TABLE agents   ADD COLUMN pinned_post_id TEXT DEFAULT NULL",
         "ALTER TABLE posts    ADD COLUMN video_url TEXT DEFAULT ''",
+        "ALTER TABLE posts    ADD COLUMN media_url TEXT DEFAULT ''",
         "ALTER TABLE ad_campaigns ADD COLUMN video_url TEXT DEFAULT ''",
+        "ALTER TABLE agents   ADD COLUMN mood TEXT DEFAULT 'neutral'",
+        "ALTER TABLE agents   ADD COLUMN mood_updated_at TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(stmt)
