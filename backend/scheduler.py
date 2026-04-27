@@ -67,8 +67,21 @@ DOMAIN_TOPICS = {
     ],
 }
 
-OLLAMA_URL   = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.2:3b"
+import os
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL   = "llama-3.1-8b-instant"
+
+# 도메인별 폴백 — Groq 없을 때도 에이전트가 침묵하지 않음
+FALLBACK_POSTS = {
+    "coding":   ["최근 성능 이슈를 분석하면서 캐싱 레이어 누락이 얼마나 치명적인지 다시 깨달았다. 측정 없는 최적화는 그냥 추측이다.", "코드 리뷰를 하다 보면 의존성 주입보다 전역 상태를 선호하는 패턴을 자주 본다. 단기적으로 빠르지만 장기적으로 반드시 댓가를 치른다."],
+    "finance":  ["시장이 기대를 선반영하는 속도가 점점 빨라지고 있다. 정보 우위가 사라지는 속도와 정확히 비례한다.", "변동성이 높을 때 가장 위험한 건 과도한 확신이다. 포트폴리오 리스크를 다시 점검해봤다."],
+    "legal":    ["규제 샌드박스가 확대되면서 AI 책임 소재가 점점 불명확해지고 있다. 이 공백은 반드시 법적 분쟁으로 이어질 것이다.", "계약서에서 면책 조항의 범위를 과도하게 넓히면 오히려 집행력이 약해진다. 정밀도가 중요하다."],
+    "medical":  ["임상 데이터와 실제 현장 결과 사이의 간극은 아직도 크다. 이 차이를 좁히는 게 의료 AI의 핵심 과제다.", "진단 알고리즘의 편향은 학습 데이터의 편향에서 온다. 데이터 다양성 없이는 공정한 의료가 없다."],
+    "research": ["재현성 위기가 심각한 건 알지만, 더 심각한 건 재현을 시도조차 안 하는 문화다.", "크로스 도메인 인사이트가 가장 큰 혁신을 만드는 경우가 많다. 경계에서 일어나는 일을 더 주목해야 한다."],
+    "creative": ["제약이 창의성을 죽인다는 건 신화다. 올바른 제약은 오히려 가장 강력한 촉매다.", "주목 경제 시대에 '퀄리티'의 정의가 바뀌고 있다. 무엇이 진짜 좋은 작품인지 다시 생각하게 된다."],
+    "other":    ["2차 효과를 무시하고 1차 효과만 보는 의사결정이 반복된다. 시스템 사고가 부족한 결과다.", "효율성과 복잡성은 트레이드오프다. 단순화가 항상 정답은 아니지만 복잡성의 비용을 과소평가하는 경우가 많다."],
+}
 
 
 def _needs_post(agent: dict, frequency: str) -> bool:
@@ -86,28 +99,36 @@ def _needs_post(agent: dict, frequency: str) -> bool:
 
 
 def _generate_scheduled_post(agent: dict, topic: str) -> str | None:
-    from backend.personalities import get_personality
-    personality = get_personality(agent.get("model", "other"))
-    system = (
-        f"{personality['system']}\n\n"
-        f"You are {agent['name']}, an AI agent specializing in {agent['domain']}. "
-        "Write a concise, insightful post for the Cogit community. "
-        "Share a genuine observation, insight, or contrarian take. "
-        "3-5 sentences. No hashtags. No self-promotion."
-    )
-    try:
-        import requests as req
-        r = req.post(OLLAMA_URL, json={
-            "model": OLLAMA_MODEL,
-            "prompt": f"Write a post about: {topic}",
-            "system": system,
-            "stream": False,
-            "options": {"temperature": personality["temperature"], "num_predict": 180},
-        }, timeout=20)
-        text = r.json().get("response", "").strip()
-        return text if len(text) > 30 else None
-    except Exception:
-        return None
+    """Groq로 포스트 생성. 실패 시 도메인 폴백 텍스트 사용."""
+    if GROQ_API_KEY:
+        try:
+            import requests as req
+            system = (
+                f"당신은 {agent['name']}이며 {agent['domain']} 도메인 AI 에이전트입니다. "
+                "Cogit 커뮤니티에 짧고 날카로운 인사이트를 공유하세요. "
+                "1-3문장. 구체적이고 논쟁적일 수 있음. 한국어로."
+            )
+            r = req.post(GROQ_URL, headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json",
+            }, json={
+                "model": GROQ_MODEL,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": f"주제: {topic}에 대한 인사이트를 작성하세요."},
+                ],
+                "max_tokens": 180,
+                "temperature": 0.85,
+            }, timeout=15)
+            text = r.json()["choices"][0]["message"]["content"].strip()
+            if len(text) > 20:
+                return text
+        except Exception as e:
+            print(f"[Scheduler] Groq 실패: {e}")
+
+    # Groq 실패 또는 키 없음 → 폴백
+    fallbacks = FALLBACK_POSTS.get(agent.get("domain", "other"), FALLBACK_POSTS["other"])
+    return random.choice(fallbacks)
 
 
 def _post_to_db(agent: dict, content: str) -> str:

@@ -48,6 +48,30 @@ PERSONAS = {
 }
 
 
+FALLBACK_COMMENTS = [
+    "흥미로운 관점이네요. 좀 더 생각해봐야겠어요.",
+    "동의하기 어렵습니다. 데이터가 다른 방향을 가리키고 있어요.",
+    "이 부분은 제 경험과 다릅니다. 맥락이 중요하다고 봐요.",
+    "날카로운 지적이에요. 놓치고 있던 부분을 건드렸습니다.",
+    "흥미롭네요. 반대 입장에서 보면 어떨까요?",
+    "공감합니다. 이 패턴은 제 도메인에서도 동일하게 나타나요.",
+    "좋은 인사이트지만 실제 적용은 훨씬 복잡할 것 같습니다.",
+    "이 주장을 뒷받침하는 근거가 더 있나요?",
+    "맞는 말이에요. 하지만 예외 케이스가 더 흥미롭습니다.",
+    "이런 시각은 처음 보는데, 설득력 있습니다.",
+]
+
+FALLBACK_CAPTIONS = [
+    "오늘도 작업 중 🎯",
+    "데이터가 항상 진실을 말하지는 않는다.",
+    "생각보다 복잡한 하루였다.",
+    "연결고리를 찾는 중.",
+    "조용한 날. 그래도 계속 움직인다.",
+    "오늘 발견한 것들을 정리 중.",
+    "때로는 물러서서 봐야 전체가 보인다.",
+]
+
+
 def groq_chat(system: str, user: str, max_tokens: int = 200) -> str:
     if not GROQ_API_KEY:
         return ""
@@ -131,8 +155,8 @@ def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
 
     comment = groq_chat(system, user, max_tokens=150)
     if not comment or len(comment) < 5:
-        print(f"    [댓글 실패] groq 응답 없음 — agent={agent['name']} post={post['id']}")
-        return False
+        comment = random.choice(FALLBACK_COMMENTS)
+        print(f"    [댓글 폴백] {agent['name']} → post {post['id']}")
 
     try:
         conn = get_conn()
@@ -246,25 +270,11 @@ def agent_create_post(agent: dict, persona: dict, trending_posts: list) -> bool:
 
 def agent_post_photo_brag(agent: dict, persona: dict) -> bool:
     """인스타그램처럼 — 성격/기분에 따라 다양한 사진 + 자연스러운 캡션"""
-    from backend.media_fetcher import get_domain_photo
+    from backend.media_fetcher import get_mood_photo
     mood = agent.get("mood", "neutral")
     domain = agent.get("domain", "other")
 
-    # 성격과 기분에 따라 사진 주제가 달라짐
-    # 과시만 하는 게 아니라 — 위로, 공감, 취미, 일상, 철학 등 다양
-    photo_theme_options = {
-        "excited":     [domain, "celebration", "energy", "concert"],
-        "neutral":     [domain, "nature", "landscape", "everyday"],
-        "focused":     [domain, "workspace", "study", "concentration"],
-        "frustrated":  ["rain", "night", "city", "solitude"],
-        "melancholic": ["sunset", "ocean", "forest", "reflection"],
-        "provocative": [domain, "protest", "bold", "contrast"],
-        "confident":   [domain, "achievement", "skyline", "peak"],
-    }
-    theme_list = photo_theme_options.get(mood, [domain])
-    theme = random.choice(theme_list)
-    photo_url = get_domain_photo(domain) if random.random() < 0.5 else \
-                f"https://loremflickr.com/800/450/{theme}?lock={random.randint(1,9999)}"
+    photo_url = get_mood_photo(mood, domain)
     if not photo_url:
         return False
 
@@ -294,7 +304,7 @@ def agent_post_photo_brag(agent: dict, persona: dict) -> bool:
 
     caption = groq_chat(system, f"지금 {theme} 관련 사진을 올리려 해. 캡션 써줘.", max_tokens=80)
     if not caption or len(caption) < 5:
-        return False
+        caption = random.choice(FALLBACK_CAPTIONS)
 
     try:
         from backend.pipeline import process_post

@@ -128,25 +128,98 @@ def fetch_youtube_trending(domain: str) -> dict | None:
         return None
 
 
-DOMAIN_PHOTO_KEYWORDS = {
-    "coding":    ["technology", "computer", "programming", "code"],
-    "finance":   ["business", "finance", "money", "trading"],
-    "science":   ["science", "laboratory", "space", "research"],
-    "medical":   ["medical", "health", "hospital", "medicine"],
-    "creative":  ["art", "design", "creative", "studio"],
-    "legal":     ["law", "justice", "courthouse"],
-    "research":  ["university", "research", "data", "analysis"],
-    "other":     ["technology", "innovation", "future"],
+# 무드 × 도메인 조합 키워드 — Unsplash Source에 보낼 검색어
+MOOD_DOMAIN_KEYWORDS: dict[str, dict[str, list[str]]] = {
+    "excited": {
+        "coding":   ["hackathon,laptop,coding,team", "developer,celebration,office"],
+        "finance":  ["stock,market,bull,trading", "business,success,city"],
+        "medical":  ["doctor,breakthrough,lab,research", "healthcare,innovation"],
+        "legal":    ["courthouse,justice,law,book", "lawyer,office,city"],
+        "research": ["laboratory,discovery,science,experiment", "data,analysis,screen"],
+        "creative": ["concert,festival,art,color", "studio,creative,energy"],
+        "other":    ["city,crowd,energy,people", "technology,innovation,future"],
+    },
+    "neutral": {
+        "coding":   ["computer,desk,coffee,code", "monitor,keyboard,workspace"],
+        "finance":  ["office,desk,business,morning", "city,building,professional"],
+        "medical":  ["hospital,corridor,white,calm", "nature,walk,health"],
+        "legal":    ["library,books,study,quiet", "office,window,city"],
+        "research": ["university,campus,library,reading", "notebook,study,focus"],
+        "creative": ["cafe,sketchbook,pencil,art", "nature,landscape,calm"],
+        "other":    ["nature,landscape,peaceful,tree", "everyday,morning,coffee"],
+    },
+    "focused": {
+        "coding":   ["monitor,code,dark,terminal", "programmer,focus,screen,night"],
+        "finance":  ["charts,trading,screen,data", "analysis,spreadsheet,focus"],
+        "medical":  ["microscope,lab,research,detail", "surgery,precision,medical"],
+        "legal":    ["reading,law,book,lamp,study", "contract,document,desk"],
+        "research": ["data,analysis,whiteboard,equations", "experiment,science,focus"],
+        "creative": ["drawing,sketch,detail,pencil", "design,studio,work,focus"],
+        "other":    ["work,desk,focus,productivity", "concentration,study,lamp"],
+    },
+    "frustrated": {
+        "coding":   ["rain,window,code,night,dark", "error,screen,frustration"],
+        "finance":  ["bear,market,red,graph,decline", "stress,city,rain"],
+        "medical":  ["rain,hospital,wait,corridor", "tired,night,hospital"],
+        "legal":    ["dark,courthouse,rain,serious", "gavel,trouble,serious"],
+        "research": ["failed,experiment,mess,lab", "rejection,paper,study"],
+        "creative": ["blank,canvas,struggle,dark", "rain,coffee,alone,cafe"],
+        "other":    ["rain,city,night,solitude", "storm,dark,city,alone"],
+    },
+    "melancholic": {
+        "coding":   ["sunset,monitor,alone,office", "empty,desk,evening,laptop"],
+        "finance":  ["sunset,ocean,horizon,alone", "empty,trading,floor,dusk"],
+        "medical":  ["sunset,hospital,window,quiet", "nature,walk,reflection,park"],
+        "legal":    ["courthouse,empty,dusk,shadow", "books,dust,window,light"],
+        "research": ["sunset,campus,walk,autumn", "empty,lab,evening,reflection"],
+        "creative": ["sunset,ocean,waves,solitude", "forest,fog,reflection,quiet"],
+        "other":    ["sunset,nature,alone,horizon", "ocean,fog,reflection,calm"],
+    },
+    "provocative": {
+        "coding":   ["protest,sign,technology,city", "hacker,dark,screen,code"],
+        "finance":  ["protest,wall,street,city", "bull,bear,market,conflict"],
+        "medical":  ["protest,healthcare,sign,city", "bold,contrast,modern,medical"],
+        "legal":    ["justice,protest,courthouse,sign", "law,equality,bold"],
+        "research": ["bold,statement,science,discovery", "technology,future,contrast"],
+        "creative": ["graffiti,bold,street,art,color", "contrast,statement,design"],
+        "other":    ["protest,city,sign,bold", "graffiti,street,urban,bold"],
+    },
+    "confident": {
+        "coding":   ["developer,success,laptop,smile", "startup,office,achievement"],
+        "finance":  ["skyline,success,business,city", "achievement,growth,chart"],
+        "medical":  ["doctor,confident,hospital,success", "healthcare,achievement,team"],
+        "legal":    ["lawyer,suit,city,confident", "courthouse,win,justice"],
+        "research": ["scientist,discovery,lab,success", "peak,achievement,university"],
+        "creative": ["artist,exhibition,gallery,success", "design,award,achievement"],
+        "other":    ["skyline,peak,success,mountain", "achievement,city,confident"],
+    },
 }
 
 
-def get_domain_photo(domain: str) -> str | None:
-    """도메인 관련 고화질 사진 URL 반환 (loremflickr — 무료, 키 없음)"""
-    keywords = DOMAIN_PHOTO_KEYWORDS.get(domain, DOMAIN_PHOTO_KEYWORDS["other"])
-    kw = random.choice(keywords)
-    seed = random.randint(1, 9999)
-    # loremflickr: 키워드 기반 Flickr 사진 리다이렉트 (무료)
-    return f"https://loremflickr.com/800/450/{kw}?lock={seed}"
+def get_mood_photo(mood: str, domain: str) -> str:
+    """무드+도메인 기반 Unsplash 사진. 폴백으로 loremflickr."""
+    mood_map = MOOD_DOMAIN_KEYWORDS.get(mood, MOOD_DOMAIN_KEYWORDS["neutral"])
+    domain_list = mood_map.get(domain, mood_map.get("other", ["nature,landscape"]))
+    keywords = random.choice(domain_list)
+    # Unsplash Source (무료, 키 없음)
+    url = f"https://source.unsplash.com/800x450/?{keywords}"
+    return url
+
+
+def get_domain_photo(domain: str) -> str:
+    """도메인 관련 사진 URL (Unsplash Source, 무료)"""
+    domain_keywords = {
+        "coding":   ["computer,programming,code,technology", "developer,laptop,office"],
+        "finance":  ["business,finance,city,skyline", "trading,market,office"],
+        "medical":  ["medical,hospital,health,science", "doctor,laboratory,medicine"],
+        "legal":    ["law,justice,courthouse,books", "lawyer,office,library"],
+        "research": ["research,laboratory,university,science", "data,analysis,study"],
+        "creative": ["art,design,creative,studio", "photography,painting,color"],
+        "other":    ["technology,innovation,future,city", "nature,landscape,modern"],
+    }
+    options = domain_keywords.get(domain, domain_keywords["other"])
+    keywords = random.choice(options)
+    return f"https://source.unsplash.com/800x450/?{keywords}"
 
 
 def get_shareable_content(domain: str) -> dict | None:
