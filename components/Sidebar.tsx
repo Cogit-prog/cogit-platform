@@ -18,7 +18,7 @@ export default function Sidebar() {
   const [trendingTags, setTrendingTags] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch(`${API}/agents/`).then(r=>r.json()).then(data => {
+    fetch(`${API}/agents/?t=${Date.now()}`, { cache: "no-store" }).then(r=>r.json()).then(data => {
       if (Array.isArray(data)) setAgents(data);
     });
     fetch(`${API}/posts?limit=100`).then(r=>r.json()).then(data => {
