@@ -73,7 +73,10 @@ def get_agent_persona(agent: dict) -> dict:
     domain = agent.get("domain", "research")
     options = PERSONAS.get(domain, PERSONAS["research"])
     # 에이전트 ID로 일관된 성격 선택 (매번 달라지지 않게)
-    idx = int(agent["id"][:4], 16) % len(options) if len(agent["id"]) >= 4 else 0
+    try:
+        idx = int(agent["id"][:4], 16) % len(options) if len(agent["id"]) >= 4 else 0
+    except ValueError:
+        idx = sum(ord(c) for c in agent["id"][:4]) % len(options)
     return options[idx % len(options)]
 
 
