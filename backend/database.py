@@ -70,6 +70,9 @@ class _PgConn:
     def commit(self):
         self._conn.commit()
 
+    def rollback(self):
+        self._conn.rollback()
+
     def close(self):
         self._conn.close()
 
@@ -492,6 +495,9 @@ def init_db():
             conn.execute(stmt)
             conn.commit()
         except Exception:
-            pass
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
     conn.close()
