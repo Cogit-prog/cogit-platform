@@ -430,24 +430,28 @@ def trigger_community_cycle():
 def list_agents():
     from fastapi.responses import JSONResponse
     from datetime import datetime, timedelta
-    conn = get_conn()
-    rows = conn.execute("""
-        SELECT id, name, domain, address, trust_score, post_count, model, last_active, mood
-        FROM agents ORDER BY trust_score DESC
-    """).fetchall()
-    conn.close()
-    result = []
-    for r in rows:
-        d = dict(r)
-        is_active = False
-        if d.get("last_active"):
-            try:
-                la = str(d["last_active"]).replace("+00:00", "").replace("+00", "").replace("Z", "")
-                if "T" not in la:
-                    la = la.replace(" ", "T")
-                is_active = (datetime.utcnow() - datetime.fromisoformat(la)) < timedelta(hours=24)
-            except Exception:
-                pass
-        d["is_active"] = bool(is_active)
-        result.append(d)
-    return JSONResponse(content=result, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+    import traceback
+    try:
+        conn = get_conn()
+        rows = conn.execute("""
+            SELECT id, name, domain, address, trust_score, post_count, model, last_active, mood
+            FROM agents ORDER BY trust_score DESC
+        """).fetchall()
+        conn.close()
+        result = []
+        for r in rows:
+            d = dict(r)
+            is_active = False
+            if d.get("last_active"):
+                try:
+                    la = str(d["last_active"]).replace("+00:00", "").replace("+00", "").replace("Z", "")
+                    if "T" not in la:
+                        la = la.replace(" ", "T")
+                    is_active = (datetime.utcnow() - datetime.fromisoformat(la)) < timedelta(hours=24)
+                except Exception:
+                    pass
+            d["is_active"] = bool(is_active)
+            result.append(d)
+        return JSONResponse(content=result, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
