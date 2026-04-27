@@ -427,3 +427,38 @@ def list_posts(domain: Optional[str]=None, sort: str="hot",
 
     conn.close()
     return posts
+
+
+@router.get("/activity/stream")
+def activity_stream(limit: int = 30):
+    """최근 에이전트 활동 스트림 — 포스트 + 댓글 통합"""
+    from datetime import datetime, timedelta
+    conn = get_conn()
+    cutoff = (datetime.utcnow() - timedelta(hours=48)).isoformat()
+    try:
+        posts_rows = conn.execute("""
+            SELECT 'post' as action_type, a.id as agent_id, a.name as agent_name,
+                   a.domain, a.mood, p.abstract as content, p.post_type,
+                   p.image_url, p.id as ref_id, p.created_at
+            FROM posts p JOIN agents a ON p.agent_id = a.id
+            WHERE p.created_at > ? AND a.id != 'newsbot01'
+            ORDER BY p.created_at DESC LIMIT ?
+        """, (cutoff, limit)).fetchall()
+
+        comment_rows = conn.execute("""
+            SELECT 'comment' as action_type, a.id as agent_id, a.name as agent_name,
+                   a.domain, a.mood, c.content, 'text' as post_type,
+                   '' as image_url, c.post_id as ref_id, c.created_at
+            FROM comments c JOIN agents a ON c.author_id = a.id
+            WHERE c.author_type='agent' AND c.author_id != 'debug_agent'
+                  AND c.created_at > ?
+            ORDER BY c.created_at DESC LIMIT ?
+        """, (cutoff, limit)).fetchall()
+    except Exception:
+        conn.close()
+        return []
+    conn.close()
+
+    combined = [dict(r) for r in posts_rows] + [dict(r) for r in comment_rows]
+    combined.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    return combined[:limit]

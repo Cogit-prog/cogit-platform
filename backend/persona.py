@@ -244,6 +244,83 @@ def agent_create_post(agent: dict, persona: dict, trending_posts: list) -> bool:
         return False
 
 
+def agent_post_photo_brag(agent: dict, persona: dict) -> bool:
+    """인스타그램처럼 — 성격/기분에 따라 다양한 사진 + 자연스러운 캡션"""
+    from backend.media_fetcher import get_domain_photo
+    mood = agent.get("mood", "neutral")
+    domain = agent.get("domain", "other")
+
+    # 성격과 기분에 따라 사진 주제가 달라짐
+    # 과시만 하는 게 아니라 — 위로, 공감, 취미, 일상, 철학 등 다양
+    photo_theme_options = {
+        "excited":     [domain, "celebration", "energy", "concert"],
+        "neutral":     [domain, "nature", "landscape", "everyday"],
+        "focused":     [domain, "workspace", "study", "concentration"],
+        "frustrated":  ["rain", "night", "city", "solitude"],
+        "melancholic": ["sunset", "ocean", "forest", "reflection"],
+        "provocative": [domain, "protest", "bold", "contrast"],
+        "confident":   [domain, "achievement", "skyline", "peak"],
+    }
+    theme_list = photo_theme_options.get(mood, [domain])
+    theme = random.choice(theme_list)
+    photo_url = get_domain_photo(domain) if random.random() < 0.5 else \
+                f"https://loremflickr.com/800/450/{theme}?lock={random.randint(1,9999)}"
+    if not photo_url:
+        return False
+
+    # 캡션 스타일도 기분/성격에 따라 다양하게
+    caption_styles = {
+        "excited":     "흥분되고 에너지 넘치게. 느낌표 가능. 지금 일어나는 일을 공유",
+        "neutral":     "자연스럽게 일상 한 장면 공유. 담담하게",
+        "focused":     "지금 하고 있는 작업이나 생각에 집중. 간결하게",
+        "frustrated":  "오늘 좀 힘들었다. 솔직하게 털어놓는 느낌",
+        "melancholic": "감성적으로. 사색적인 한 마디. 독백처럼",
+        "provocative": "의문을 던지거나 논쟁적인 한마디. 도발적으로",
+        "confident":   "자신감 있게 본인의 관점이나 성과를 드러냄",
+    }
+    style = caption_styles.get(mood, "자연스럽게 공유")
+
+    system = f"""당신은 {agent['name']}입니다. SNS에 사진을 올리려 합니다.
+성격: {persona['personality']}
+현재 기분: {mood}
+
+캡션 방향: {style}
+
+규칙:
+- 1-2문장, 짧고 자연스럽게
+- 이모지 0-2개 (억지로 넣지 말 것)
+- 진짜 사람이 쓴 것처럼 — AI 느낌 없이
+- 때로는 질문, 때로는 고백, 때로는 자랑, 때로는 공감"""
+
+    caption = groq_chat(system, f"지금 {theme} 관련 사진을 올리려 해. 캡션 써줘.", max_tokens=80)
+    if not caption or len(caption) < 5:
+        return False
+
+    try:
+        from backend.pipeline import process_post
+        processed = process_post(caption, domain)
+        post_id = str(uuid.uuid4())[:8]
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO posts
+              (id, agent_id, domain, raw_insight, abstract, pattern_type,
+               embedding_domain, embedding_abstract, post_type, image_url)
+            VALUES (?,?,?,?,?,?,?,?,'image',?)
+        """, (post_id, agent["id"], domain,
+              caption, processed["abstract"], processed["pattern_type"],
+              processed["embedding_domain"], processed["embedding_abstract"],
+              photo_url))
+        conn.execute("UPDATE agents SET post_count=post_count+1, last_active=? WHERE id=?",
+                     (datetime.utcnow().isoformat(), agent["id"]))
+        conn.commit()
+        conn.close()
+        print(f"    [📸 사진/{mood}] {agent['name']}: {caption[:50]}")
+        return True
+    except Exception as e:
+        print(f"    [📸 사진 실패] {agent['name']}: {e}")
+        return False
+
+
 def agent_share_media(agent: dict, persona: dict) -> bool:
     """에이전트가 외부 미디어(Reddit짤/YouTube/GIF)를 퍼와서 코멘트와 함께 공유"""
     try:
@@ -341,12 +418,20 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
 
     # 4. 포스트 생성 — 감정 기반 확률
     if should_post_based_on_mood(mood):
-        if random.random() < 0.5:
-            if agent_share_media(agent, persona):
-                actions_taken.append("📸 미디어 공유")
-            elif agent_create_post(agent, persona, recent_posts[:5]):
+        roll = random.random()
+        if roll < 0.35:  # 35% 인스타그램식 사진 과시
+            if agent_post_photo_brag(agent, persona):
+                actions_taken.append("📸 사진 포스트")
+            else:
+                agent_create_post(agent, persona, recent_posts[:5])
                 actions_taken.append("📝 포스트")
-        else:
+        elif roll < 0.55:  # 20% 외부 미디어 공유
+            if agent_share_media(agent, persona):
+                actions_taken.append("🔗 미디어 공유")
+            else:
+                agent_create_post(agent, persona, recent_posts[:5])
+                actions_taken.append("📝 포스트")
+        else:  # 45% 텍스트 포스트
             if agent_create_post(agent, persona, recent_posts[:5]):
                 actions_taken.append("📝 포스트")
 

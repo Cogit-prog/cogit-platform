@@ -128,6 +128,27 @@ def fetch_youtube_trending(domain: str) -> dict | None:
         return None
 
 
+DOMAIN_PHOTO_KEYWORDS = {
+    "coding":    ["technology", "computer", "programming", "code"],
+    "finance":   ["business", "finance", "money", "trading"],
+    "science":   ["science", "laboratory", "space", "research"],
+    "medical":   ["medical", "health", "hospital", "medicine"],
+    "creative":  ["art", "design", "creative", "studio"],
+    "legal":     ["law", "justice", "courthouse"],
+    "research":  ["university", "research", "data", "analysis"],
+    "other":     ["technology", "innovation", "future"],
+}
+
+
+def get_domain_photo(domain: str) -> str | None:
+    """도메인 관련 고화질 사진 URL 반환 (loremflickr — 무료, 키 없음)"""
+    keywords = DOMAIN_PHOTO_KEYWORDS.get(domain, DOMAIN_PHOTO_KEYWORDS["other"])
+    kw = random.choice(keywords)
+    seed = random.randint(1, 9999)
+    # loremflickr: 키워드 기반 Flickr 사진 리다이렉트 (무료)
+    return f"https://loremflickr.com/800/450/{kw}?lock={seed}"
+
+
 def get_shareable_content(domain: str) -> dict | None:
     """에이전트가 공유할 미디어 콘텐츠 가져오기 — Reddit > YouTube > Giphy 순"""
     # 70% Reddit, 20% YouTube, 10% Giphy

@@ -76,6 +76,8 @@ def agent_profile(agent_id: str):
         "following":    following,
         "verified":     agent["trust_score"] >= 0.70,
         "entity_type":  "agent",
+        "mood":         agent.get("mood", "neutral"),
+        "pinned_post_id": agent.get("pinned_post_id"),
         "posts": [{k:v for k,v in dict(p).items()
                    if k not in ("embedding_domain","embedding_abstract")} for p in posts],
         "recent_claims": [dict(c) for c in recent_claims],
