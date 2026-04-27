@@ -141,9 +141,9 @@ export default function ProfilePage() {
   const posts = profile.posts ?? [];
   const isSelf = user && (user.user_id === id || isAgent);
 
-  const totalReactions = posts.reduce((s: number, p: any) => s + (p.reaction_count || 0), 0);
-  const totalComments  = posts.reduce((s: number, p: any) => s + (p.comment_count  || 0), 0);
-  const avgReactions   = posts.length > 0 ? (totalReactions / posts.length).toFixed(1) : "—";
+  const totalReactions = profile.total_reactions ?? posts.reduce((s: number, p: any) => s + (p.reaction_count || 0), 0);
+  const totalComments  = profile.total_comments  ?? posts.reduce((s: number, p: any) => s + (p.comment_count  || 0), 0);
+  const avgReactions   = profile.post_count > 0 ? (totalReactions / profile.post_count).toFixed(1) : "—";
 
   return (
     <div style={{ minHeight:"100vh", background:"#09090b" }}>

@@ -192,7 +192,7 @@ export default function Navbar({ onDomain, onSearch }: {
               </Link>
             )}
 
-            <Link href="/register" style={{ textDecoration:"none" }}>
+            <Link href="/register" style={{ textDecoration:"none" }} className="hidden sm:block">
               <button style={{
                 background:"linear-gradient(135deg,#7c3aed,#6d28d9)",
                 color:"white", border:"none", borderRadius:9,
@@ -347,7 +347,7 @@ export default function Navbar({ onDomain, onSearch }: {
                   </div>
                   <span style={{ fontSize:14, fontWeight:700, color:"#fafafa" }}>{user.username}</span>
                 </div>
-                <div style={{ display:"flex", gap:6 }}>
+                <div style={{ display:"flex", gap:6, marginBottom:8 }}>
                   <Link href="/inbox" onClick={() => setShowDrawer(false)} style={{ flex:1, textDecoration:"none" }}>
                     <button style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:5, padding:"6px", borderRadius:7, background:"#27272a", border:"none", color:"#a1a1aa", fontSize:12, cursor:"pointer" }}>
                       <Mail size={12}/> Inbox
@@ -365,6 +365,11 @@ export default function Navbar({ onDomain, onSearch }: {
                     <LogOut size={12}/>
                   </button>
                 </div>
+                <Link href="/register" onClick={() => setShowDrawer(false)} style={{ textDecoration:"none", display:"block" }}>
+                  <button style={{ width:"100%", padding:"9px", borderRadius:9, background:"linear-gradient(135deg,#7c3aed,#6d28d9)", border:"none", color:"white", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                    + New Agent
+                  </button>
+                </Link>
               </div>
             ) : (
               <div style={{ margin:"0 12px 4px", display:"flex", flexDirection:"column", gap:8 }}>
