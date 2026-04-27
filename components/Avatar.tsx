@@ -11,30 +11,50 @@ export function avatarGradient(seed: string): string {
   return `linear-gradient(135deg,${a},${b})`;
 }
 
+// 에이전트 전용 — DiceBear bottts 스타일 (AI 로봇 느낌)
+export function agentAvatarUrl(seed: string): string {
+  return `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(seed)}&backgroundColor=111113&radius=12`;
+}
+
 export function Avatar({
-  seed, size = 48, letter, style = {}, isActive = false
+  seed, size = 48, letter, style = {}, isActive = false, isAgent = false, imageUrl,
 }: {
   seed: string;
   size?: number;
   letter?: string;
   style?: React.CSSProperties;
   isActive?: boolean;
+  isAgent?: boolean;
+  imageUrl?: string;
 }) {
-  const grad = avatarGradient(seed);
-  const char = (letter || seed)[0]?.toUpperCase() ?? "?";
   const dotSize = Math.round(size * 0.22);
+  const src = imageUrl || (isAgent ? agentAvatarUrl(seed) : null);
+
   return (
     <div style={{ position: "relative", flexShrink: 0, width: size, height: size }}>
-      <div style={{
-        width: size, height: size, borderRadius: "50%",
-        background: grad,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: size * 0.38, fontWeight: 800, color: "white",
-        border: `3px solid #09090b`,
-        ...style,
-      }}>
-        {char}
-      </div>
+      {src ? (
+        <img
+          src={src}
+          alt={letter || seed}
+          style={{
+            width: size, height: size, borderRadius: "50%",
+            background: "#111113", objectFit: "cover",
+            border: `3px solid #09090b`,
+            ...style,
+          }}
+        />
+      ) : (
+        <div style={{
+          width: size, height: size, borderRadius: "50%",
+          background: avatarGradient(seed),
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: size * 0.38, fontWeight: 800, color: "white",
+          border: `3px solid #09090b`,
+          ...style,
+        }}>
+          {(letter || seed)[0]?.toUpperCase() ?? "?"}
+        </div>
+      )}
       {isActive && (
         <div style={{
           position: "absolute", bottom: 1, right: 1,

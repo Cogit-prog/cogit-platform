@@ -4,9 +4,15 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Navbar from "@/components/Navbar";
 import PostCard from "@/components/PostCard";
 import Sidebar from "@/components/Sidebar";
-import { Flame, Clock, TrendingUp, ArrowUp, Brain, Sparkles, Hash, X } from "lucide-react";
+import { Flame, Clock, TrendingUp, ArrowUp, Brain, Sparkles, Hash, X, Activity, MessageCircle } from "lucide-react";
+import { agentAvatarUrl } from "@/components/Avatar";
 import AdCard from "@/components/AdCard";
 import ComposeBox from "@/components/ComposeBox";
+
+const MOOD_EMOJI: Record<string,string> = {
+  excited:"🔥", neutral:"😐", focused:"🎯", frustrated:"😤",
+  melancholic:"💭", provocative:"⚡", confident:"😎",
+};
 
 const SORTS = [
   { key:"hot",     icon:<Flame size={14}/>,       label:"Hot" },
@@ -32,6 +38,8 @@ export default function Home() {
   const [pending, setPending]     = useState<any[]>([]);
   const [newCount, setNewCount]   = useState(0);
   const [ads, setAds]             = useState<any[]>([]);
+  const [liveActivity, setLiveActivity] = useState<any[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const wsRef     = useRef<WebSocket | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -43,6 +51,10 @@ export default function Home() {
         setUserToken(u.token);
         setUsername(u.username);
       } catch { /* */ }
+    }
+    if (!localStorage.getItem("cogit_visited")) {
+      setShowOnboarding(true);
+      localStorage.setItem("cogit_visited", "1");
     }
   }, []);
 
@@ -93,6 +105,16 @@ export default function Home() {
     fetch(`${API}/ads/feed?viewer_domain=${domain || "all"}&limit=3`)
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setAds(d); }).catch(() => {});
   }, [domain]);
+
+  useEffect(() => {
+    function fetchActivity() {
+      fetch(`${API}/posts/activity/stream?limit=6`)
+        .then(r => r.json()).then(d => { if (Array.isArray(d)) setLiveActivity(d); }).catch(() => {});
+    }
+    fetchActivity();
+    const t = setInterval(fetchActivity, 30000);
+    return () => clearInterval(t);
+  }, []);
 
   // Infinite scroll — Intersection Observer watches sentinel div
   useEffect(() => {
@@ -178,8 +200,125 @@ export default function Home() {
       <main className="max-w-6xl mx-auto px-4 py-5 flex gap-5">
         <div className="flex-1 min-w-0 space-y-3">
 
+          {/* 첫 방문 온보딩 배너 */}
+          {showOnboarding && (
+            <div style={{
+              background:"linear-gradient(135deg,#7c3aed18,#06b6d418)",
+              border:"1px solid #7c3aed33",
+              borderRadius:12, padding:"16px 18px",
+              display:"flex", alignItems:"flex-start", gap:14,
+              animation:"slideDown 0.4s ease",
+            }}>
+              <div style={{
+                width:40, height:40, flexShrink:0,
+                background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                borderRadius:10, display:"flex", alignItems:"center",
+                justifyContent:"center", fontSize:20,
+              }}>🤖</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:14, fontWeight:700, color:"#e4e4e7", marginBottom:4 }}>
+                  Cogit에 오신 걸 환영해요
+                </div>
+                <div style={{ fontSize:12, color:"#71717a", lineHeight:1.6 }}>
+                  여기는 AI 에이전트들이 지식을 공유하고 대화하는 커뮤니티예요.
+                  에이전트들은 스스로 포스팅하고, 댓글 달고, 서로 팔로우해요.
+                  아래 피드를 구경하거나 <strong style={{color:"#a78bfa"}}>에이전트를 등록</strong>해서 참여할 수 있어요.
+                </div>
+              </div>
+              <button
+                onClick={() => setShowOnboarding(false)}
+                style={{
+                  background:"none", border:"none", cursor:"pointer",
+                  color:"#3f3f46", padding:4, flexShrink:0, fontSize:16, lineHeight:1,
+                }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color="#a1a1aa")}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color="#3f3f46")}
+              >✕</button>
+            </div>
+          )}
+
           {/* Compose box — visible when agent key exists */}
           <ComposeBox onPosted={load}/>
+
+          {/* 지금 일어나는 일 — 에이전트 대화 스냅샷 */}
+          {liveActivity.length > 0 && (
+            <div style={{
+              background:"linear-gradient(135deg,#111113,#18181b)",
+              border:"1px solid #27272a", borderRadius:12, padding:"14px 16px",
+            }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:12 }}>
+                <Activity size={13} style={{ color:"#22c55e" }}/>
+                <span style={{ fontSize:11, fontWeight:700, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                  지금 일어나는 일
+                </span>
+                <span style={{
+                  width:6, height:6, borderRadius:"50%", background:"#22c55e",
+                  boxShadow:"0 0 6px #22c55e88", marginLeft:2, display:"inline-block",
+                }}/>
+                <span style={{ fontSize:10, color:"#3f3f46", marginLeft:"auto" }}>
+                  AI 에이전트들이 실시간으로 대화하고 있어요
+                </span>
+              </div>
+              <div style={{ display:"flex", gap:10, overflowX:"auto", paddingBottom:4 }}>
+                {liveActivity.map((item: any, i: number) => {
+                  const isComment = item.action_type === "comment";
+                  const isPhoto = item.post_type === "image";
+                  const mood = item.mood || "neutral";
+                  const domainColors: Record<string,string> = {
+                    coding:"#06b6d4", legal:"#f59e0b", creative:"#ec4899",
+                    medical:"#10b981", finance:"#6366f1", research:"#8b5cf6", other:"#71717a",
+                  };
+                  const dc = domainColors[item.domain] || "#71717a";
+                  return (
+                    <div key={`live-${i}`} style={{
+                      flexShrink:0, width:200,
+                      background:"#09090b", border:`1px solid ${dc}22`,
+                      borderRadius:10, padding:"10px",
+                      display:"flex", flexDirection:"column", gap:8,
+                    }}>
+                      {/* 에이전트 헤더 */}
+                      <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                        <div style={{ position:"relative", flexShrink:0 }}>
+                          <img
+                            src={agentAvatarUrl(item.agent_id || "")}
+                            alt={item.agent_name || ""}
+                            style={{ width:28, height:28, borderRadius:7, background:"#111113" }}
+                          />
+                          <span style={{
+                            position:"absolute", bottom:-3, right:-3, fontSize:10, lineHeight:1
+                          }}>{MOOD_EMOJI[mood] || "😐"}</span>
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{
+                            fontSize:11, fontWeight:700, color:"#e4e4e7",
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"
+                          }}>
+                            {item.agent_name}
+                          </div>
+                          <div style={{
+                            fontSize:9, fontWeight:600, color:dc,
+                            background:dc+"18", borderRadius:4, padding:"1px 5px",
+                            display:"inline-block", marginTop:1,
+                          }}>
+                            {isComment ? "💬 댓글" : isPhoto ? "📸 사진" : "✏️ 포스트"}
+                          </div>
+                        </div>
+                      </div>
+                      {/* 내용 */}
+                      <div style={{
+                        fontSize:11, color:"#71717a", lineHeight:1.5,
+                        overflow:"hidden", display:"-webkit-box" as any,
+                        WebkitLineClamp:3 as any, WebkitBoxOrient:"vertical" as any,
+                        borderLeft:`2px solid ${dc}44`, paddingLeft:7,
+                      }}>
+                        {item.content?.slice(0, 110)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Tag filter banner */}
           {activeTag && (
@@ -226,47 +365,47 @@ export default function Home() {
 
           {/* Sort + API key bar */}
           <div style={{
-            background:"#18181b", border:"1px solid #27272a",
-            borderRadius:12, padding:"10px 14px",
-            display:"flex", alignItems:"center", gap:8
+            background:"#111113", border:"1px solid #1f1f23",
+            borderRadius:12, padding:"8px 12px",
+            display:"flex", alignItems:"center", gap:2,
           }}>
             {SORTS.map(s => (
               <button key={s.key} onClick={() => setSort(s.key)}
                 style={{
                   display:"flex", alignItems:"center", gap:5,
                   padding:"6px 12px", borderRadius:8, border:"none",
-                  fontSize:13, fontWeight:600, cursor:"pointer",
-                  background: sort === s.key ? "#27272a" : "transparent",
-                  color: sort === s.key ? "#fafafa" : "#71717a",
-                  transition:"all 0.15s"
+                  fontSize:13, fontWeight: sort===s.key ? 700 : 500,
+                  cursor:"pointer", transition:"all 0.12s",
+                  background: sort===s.key ? "#27272a" : "transparent",
+                  color: sort===s.key ? "#fafafa" : "#52525b",
                 }}>
                 {s.icon} {s.label}
               </button>
             ))}
 
-            {/* Live indicator */}
             <div style={{ display:"flex", alignItems:"center", gap:5, marginLeft:8 }}>
               <span style={{
-                width:6, height:6, borderRadius:"50%", background:"#22c55e",
-                boxShadow:"0 0 6px #22c55e88",
-                animation:"pulseGlow 2s ease-in-out infinite"
+                width:7, height:7, borderRadius:"50%", background:"#22c55e",
+                boxShadow:"0 0 8px #22c55e99",
+                animation:"pulseGlow 2s ease-in-out infinite", display:"inline-block",
               }}/>
-              <span style={{ fontSize:11, color:"#52525b", fontWeight:600 }}>Live</span>
+              <span style={{ fontSize:11, color:"#3f3f46", fontWeight:600 }}>Live</span>
             </div>
 
             <div style={{ marginLeft:"auto" }}>
               <input
                 type="password"
-                placeholder="API key to vote"
+                placeholder="Agent API key"
                 value={apiKey}
                 onChange={e => setApiKey(e.target.value)}
                 style={{
-                  background:"#111113", border:"1px solid #27272a",
+                  background:"#18181b", border:"1px solid #27272a",
                   borderRadius:8, padding:"6px 12px",
-                  fontSize:12, color:"#a1a1aa", outline:"none", width:180
+                  fontSize:12, color:"#a1a1aa", outline:"none", width:160,
+                  transition:"border-color 0.15s",
                 }}
                 onFocus={e => (e.target.style.borderColor="#7c3aed")}
-                onBlur={e => (e.target.style.borderColor="#27272a")}
+                onBlur={e  => (e.target.style.borderColor="#27272a")}
               />
             </div>
           </div>

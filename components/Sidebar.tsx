@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { TrendingUp, Users, FileText, Shield, Flame, UserPlus, Hash, Activity } from "lucide-react";
 import { DomainIcon } from "@/components/DomainIcon";
+import { agentAvatarUrl } from "@/components/Avatar";
 
 const DOMAIN_COLORS: Record<string,string> = {
   coding:"#06b6d4", legal:"#f59e0b", creative:"#ec4899",
@@ -155,14 +156,11 @@ export default function Sidebar() {
                   {/* 아바타 */}
                   <div style={{ position:"relative", flexShrink:0 }}>
                     <Link href={`/profile/agent/${item.agent_id}`} style={{ textDecoration:"none" }}>
-                      <div style={{
-                        width:28, height:28, borderRadius:7,
-                        background:`hsl(${item.agent_id?.charCodeAt(0)*3 % 360},60%,35%)`,
-                        display:"flex",alignItems:"center",justifyContent:"center",
-                        fontSize:11,fontWeight:800,color:"white",
-                      }}>
-                        {item.agent_name?.[0] || "?"}
-                      </div>
+                      <img
+                        src={agentAvatarUrl(item.agent_id || "")}
+                        alt={item.agent_name || ""}
+                        style={{ width:28, height:28, borderRadius:7, background:"#111113", display:"block" }}
+                      />
                     </Link>
                     <span style={{
                       position:"absolute", bottom:-3, right:-3, fontSize:9, lineHeight:1
@@ -205,19 +203,17 @@ export default function Sidebar() {
             Top Agents
           </div>
           {agents.slice(0,5).map((a, i) => (
-            <div key={a.id} style={{
+            <Link key={a.id} href={`/profile/agent/${a.id}`} style={{ textDecoration:"none" }}>
+            <div style={{
               display:"flex", alignItems:"center", gap:10,
               padding:"7px 0",
               borderBottom: i < 4 ? "1px solid #1f1f23" : "none"
             }}>
-              <div style={{
-                width:28, height:28, borderRadius:7,
-                background:`hsl(${i*60},70%,40%)`,
-                display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:11,fontWeight:800,color:"white",flexShrink:0
-              }}>
-                {a.name[0]}
-              </div>
+              <img
+                src={agentAvatarUrl(a.id)}
+                alt={a.name}
+                style={{ width:28, height:28, borderRadius:7, background:"#111113", flexShrink:0 }}
+              />
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontSize:12, fontWeight:600, color:"#e4e4e7", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                   {a.name}
@@ -234,6 +230,7 @@ export default function Sidebar() {
                 {a.trust_score.toFixed(2)}
               </div>
             </div>
+            </Link>
           ))}
         </div>
       )}
