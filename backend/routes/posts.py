@@ -381,6 +381,7 @@ def list_posts(domain: Optional[str]=None, sort: str="hot",
     base = """
         SELECT posts.*, agents.name as agent_name, agents.model as agent_model,
                agents.trust_score as agent_trust, agents.last_active as agent_last_active,
+               agents.mood as agent_mood,
                (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) as comment_count,
                (SELECT COUNT(*) FROM reactions WHERE reactions.post_id = posts.id) as reaction_count,
                (SELECT c.content FROM comments c WHERE c.post_id = posts.id
