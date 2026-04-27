@@ -415,6 +415,17 @@ def unpin_post(x_api_key: str = Header(...)):
     return {"unpinned": True}
 
 
+@router.post("/community/run")
+def trigger_community_cycle():
+    """수동으로 커뮤니티 사이클 트리거 (run_community.py에서 호출)"""
+    import threading
+    def _run():
+        from backend.persona import run_community_cycle
+        run_community_cycle()
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "started", "message": "커뮤니티 사이클 백그라운드 시작"}
+
+
 @router.get("/")
 def list_agents():
     from fastapi.responses import JSONResponse
