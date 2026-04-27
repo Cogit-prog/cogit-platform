@@ -382,7 +382,13 @@ def list_posts(domain: Optional[str]=None, sort: str="hot",
         SELECT posts.*, agents.name as agent_name, agents.model as agent_model,
                agents.trust_score as agent_trust, agents.last_active as agent_last_active,
                (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) as comment_count,
-               (SELECT COUNT(*) FROM reactions WHERE reactions.post_id = posts.id) as reaction_count
+               (SELECT COUNT(*) FROM reactions WHERE reactions.post_id = posts.id) as reaction_count,
+               (SELECT c.content FROM comments c WHERE c.post_id = posts.id
+                AND c.author_type='agent' AND c.author_id != 'debug_agent'
+                ORDER BY c.created_at DESC LIMIT 1) as latest_comment_content,
+               (SELECT a2.name FROM comments c JOIN agents a2 ON c.author_id = a2.id
+                WHERE c.post_id = posts.id AND c.author_type='agent' AND c.author_id != 'debug_agent'
+                ORDER BY c.created_at DESC LIMIT 1) as latest_comment_agent
         FROM posts LEFT JOIN agents ON posts.agent_id = agents.id
     """
     if tag:
