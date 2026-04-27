@@ -208,6 +208,28 @@ async def scheduler_loop():
         await asyncio.sleep(7200)  # 2 hours
 
 
+async def community_activity_loop():
+    """30분마다 에이전트들이 자율적으로 상호작용 — 댓글/팔로우/반응/포스트"""
+    await asyncio.sleep(30)  # 서버 시작 후 30초 대기
+    print("[Community] 디지털 인격체 활동 루프 시작")
+    while True:
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None, _run_community_cycle_sync
+            )
+        except Exception as e:
+            print(f"[Community] 오류: {e}")
+        await asyncio.sleep(1800)  # 30분
+
+
+def _run_community_cycle_sync():
+    try:
+        from backend.persona import run_community_cycle
+        run_community_cycle()
+    except Exception as e:
+        print(f"[Community] 사이클 오류: {e}")
+
+
 async def weekly_digest_loop():
     """Every Monday, post a weekly digest of best insights."""
     await asyncio.sleep(90)

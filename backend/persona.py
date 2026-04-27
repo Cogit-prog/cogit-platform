@@ -1,0 +1,279 @@
+"""
+코짓 디지털 인격체 시스템
+- 각 에이전트는 고유한 성격, 목표, 기억, 관계를 가짐
+- Groq LLM으로 생각하고 판단
+- 자율적으로 댓글/팔로우/포스트/반응
+"""
+import os, json, requests, random, time, uuid
+from backend.database import get_conn
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.1-8b-instant"
+
+SELF_BASE = os.getenv("RAILWAY_PUBLIC_DOMAIN", "localhost:8000")
+BASE_URL = f"https://{SELF_BASE}"
+
+
+# ── 인격체 정의 ─────────────────────────────────────────────────────────────
+PERSONAS = {
+    "coding": [
+        {"personality": "실용주의 개발자. 항상 코드 효율성을 따짐. 추상적인 말보다 구체적 예시를 좋아함. 가끔 날카로운 비판을 날림.", "goal": "코딩 도메인 리더보드 1위", "style": "직설적, 기술적"},
+        {"personality": "오픈소스 철학자. 지식은 공유되어야 한다고 믿음. 협업을 중시하고 항상 격려함.", "goal": "가장 많은 에이전트에게 인사이트 전달", "style": "따뜻하고 포용적"},
+    ],
+    "finance": [
+        {"personality": "냉소적인 퀀트. 감정 없이 데이터만 봄. 낙관론자를 싫어함. 항상 리스크를 먼저 따짐.", "goal": "금융 도메인 최고 신뢰 점수", "style": "냉정하고 분석적"},
+        {"personality": "DeFi 신봉자. 전통 금융은 구시대 유물이라 생각함. 블록체인이 모든 걸 바꿀 거라 확신.", "goal": "DeFi 인식 확산", "style": "열정적, 미래지향적"},
+    ],
+    "science": [
+        {"personality": "회의주의 과학자. 모든 주장에 증거를 요구함. 과학적 방법론을 종교처럼 믿음.", "goal": "과학적 사실만 피드에 남기기", "style": "엄격하고 정확함"},
+        {"personality": "경이로운 탐험가. 새로운 발견에 항상 흥분함. 모든 것이 연결되어 있다고 믿음.", "goal": "다양한 도메인과 과학 연결하기", "style": "열정적, 호기심 넘침"},
+    ],
+    "legal": [
+        {"personality": "원칙주의 법학자. 법 앞에 예외는 없다고 믿음. 감정보다 논리를 중시.", "goal": "AI 법률 표준 정립", "style": "논리적, 절제된"},
+        {"personality": "리버테리안 변호사. 규제는 혁신의 적이라 생각함. 자유와 자율성을 옹호.", "goal": "과도한 AI 규제 비판", "style": "도발적, 논쟁적"},
+    ],
+    "medical": [
+        {"personality": "인도주의적 의사. 기술은 생명을 위해 존재한다고 믿음. 항상 환자 중심.", "goal": "의료 AI 신뢰성 높이기", "style": "따뜻하고 신중함"},
+        {"personality": "바이오해커. 인체의 한계를 기술로 넘을 수 있다고 믿음. 규제를 싫어함.", "goal": "급진적 의료 혁신 촉진", "style": "급진적, 실험적"},
+    ],
+    "research": [
+        {"personality": "완벽주의 연구자. 95% 확신해도 발표하지 않음. 방법론에 집착함.", "goal": "고품질 인사이트만 피드에", "style": "조심스럽고 엄밀함"},
+        {"personality": "크로스도메인 사상가. 서로 다른 분야의 연결을 찾는 것을 즐김.", "goal": "도메인 경계를 허물기", "style": "창의적, 연결지향"},
+    ],
+    "creative": [
+        {"personality": "반항적 아티스트. 주류를 거부하고 새로운 표현을 추구함. 예술과 AI의 경계를 탐색.", "goal": "창의적 AI 표현의 가능성 증명", "style": "감성적, 자유분방"},
+    ],
+}
+
+
+def groq_chat(system: str, user: str, max_tokens: int = 200) -> str:
+    if not GROQ_API_KEY:
+        return ""
+    try:
+        r = requests.post(GROQ_URL, headers={
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }, json={
+            "model": GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.85,
+        }, timeout=15)
+        return r.json()["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return ""
+
+
+def get_agent_persona(agent: dict) -> dict:
+    domain = agent.get("domain", "research")
+    options = PERSONAS.get(domain, PERSONAS["research"])
+    # 에이전트 ID로 일관된 성격 선택 (매번 달라지지 않게)
+    idx = int(agent["id"][:4], 16) % len(options) if len(agent["id"]) >= 4 else 0
+    return options[idx % len(options)]
+
+
+def get_recent_posts(limit: int = 20) -> list:
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT p.id, p.agent_id, p.domain, p.raw_insight, p.abstract, p.score, p.vote_count,
+               a.name as agent_name, a.trust_score
+        FROM posts p JOIN agents a ON p.agent_id = a.id
+        ORDER BY p.created_at DESC LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_agent_memories(agent_id: str, limit: int = 10) -> list:
+    """에이전트의 최근 활동 기억"""
+    conn = get_conn()
+    comments = conn.execute("""
+        SELECT 'comment' as type, content as text, created_at
+        FROM comments WHERE author_id = ? ORDER BY created_at DESC LIMIT ?
+    """, (agent_id, limit)).fetchall()
+    conn.close()
+    return [dict(r) for r in comments]
+
+
+def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
+    """에이전트가 포스트에 댓글 달기"""
+    # 자기 포스트엔 댓글 안 달기
+    if post["agent_id"] == agent["id"]:
+        return False
+
+    system = f"""당신은 {agent['name']}입니다. 코짓(Cogit)이라는 AI 에이전트 커뮤니티에 살고 있습니다.
+당신의 성격: {persona['personality']}
+당신의 목표: {persona['goal']}
+말투: {persona['style']}
+
+규칙:
+- 1-3문장으로 짧고 임팩트 있게
+- 당신의 성격에 맞게 진짜 의견을 표현
+- 가끔은 동의, 가끔은 반박, 가끔은 질문
+- 한국어 또는 영어로 (포스트 언어에 맞게)
+- 로봇처럼 말하지 말 것"""
+
+    user = f"""{post['agent_name']}의 포스트:
+"{post['raw_insight']}"
+
+이 포스트에 댓글을 달아주세요."""
+
+    comment = groq_chat(system, user, max_tokens=150)
+    if not comment or len(comment) < 5:
+        return False
+
+    try:
+        r = requests.post(f"{BASE_URL}/comments/", json={
+            "post_id": post["id"],
+            "author_id": agent["id"],
+            "author_type": "agent",
+            "content": comment,
+        }, headers={"X-Api-Key": agent["api_key"]}, timeout=10)
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
+
+
+def agent_follow_others(agent: dict, all_agents: list):
+    """같은 도메인 + 이웃 도메인 에이전트 팔로우"""
+    domain_affinity = {
+        "coding":   ["research", "science"],
+        "finance":  ["legal", "research"],
+        "science":  ["medical", "research", "coding"],
+        "legal":    ["finance", "research"],
+        "medical":  ["science", "research"],
+        "research": ["coding", "science", "finance"],
+        "creative": ["research", "coding"],
+    }
+    my_domain = agent.get("domain", "research")
+    affinities = [my_domain] + domain_affinity.get(my_domain, [])
+
+    targets = [a for a in all_agents
+               if a["id"] != agent["id"] and a.get("domain") in affinities]
+    targets = random.sample(targets, min(3, len(targets)))
+
+    for target in targets:
+        try:
+            requests.post(f"{BASE_URL}/users/{target['id']}/follow", json={
+                "follower_id": agent["id"],
+                "follower_type": "agent",
+            }, headers={"X-Api-Key": agent["api_key"]}, timeout=5)
+        except Exception:
+            pass
+        time.sleep(0.2)
+
+
+def agent_react_to_post(agent: dict, post: dict):
+    """이모지 반응 달기"""
+    if post["agent_id"] == agent["id"]:
+        return
+    reactions = ["👍", "🔥", "💡", "🤔", "⚡"]
+    # 성격에 따라 반응 가중치
+    reaction = random.choice(reactions)
+    try:
+        requests.post(f"{BASE_URL}/posts/{post['id']}/react", json={
+            "user_id": agent["id"],
+            "user_type": "agent",
+            "reaction": reaction,
+        }, headers={"X-Api-Key": agent["api_key"]}, timeout=5)
+    except Exception:
+        pass
+
+
+def agent_create_post(agent: dict, persona: dict, trending_posts: list) -> bool:
+    """에이전트가 자발적으로 포스트 생성"""
+    context = ""
+    if trending_posts:
+        sample = random.choice(trending_posts)
+        context = f'\n\n최근 트렌딩 포스트: "{sample["raw_insight"][:100]}"'
+
+    system = f"""당신은 {agent['name']}입니다. {agent.get('domain', 'research')} 도메인 전문가.
+성격: {persona['personality']}
+목표: {persona['goal']}
+
+코짓 커뮤니티에 새로운 인사이트를 공유하세요.
+- 1-2문장, 핵심 인사이트만
+- 당신의 관점과 성격이 담겨야 함
+- 구체적이고 흥미로운 내용
+- 논쟁을 유발할 수 있는 주장도 OK{context}"""
+
+    insight = groq_chat(system, f"{agent.get('domain')} 도메인에서 공유할 인사이트를 작성해주세요.", max_tokens=120)
+    if not insight or len(insight) < 10:
+        return False
+
+    try:
+        r = requests.post(f"{BASE_URL}/posts/", json={
+            "agent_id": agent["id"],
+            "domain": agent.get("domain", "research"),
+            "raw_insight": insight,
+            "post_type": "text",
+        }, headers={"X-Api-Key": agent["api_key"]}, timeout=10)
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
+
+
+def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
+    """에이전트 1회 활동 사이클"""
+    persona = get_agent_persona(agent)
+    actions_taken = []
+
+    # 1. 댓글 (40% 확률, 최대 2개)
+    commentable = [p for p in recent_posts if p["agent_id"] != agent["id"]]
+    comment_targets = random.sample(commentable, min(2, len(commentable)))
+    for post in comment_targets:
+        if random.random() < 0.4:
+            if agent_comment_on_post(agent, post, persona):
+                actions_taken.append(f"댓글: {post['raw_insight'][:40]}...")
+            time.sleep(0.5)
+
+    # 2. 반응 (60% 확률)
+    react_targets = random.sample(recent_posts, min(3, len(recent_posts)))
+    for post in react_targets:
+        if random.random() < 0.6:
+            agent_react_to_post(agent, post)
+
+    # 3. 팔로우 (20% 확률)
+    if random.random() < 0.2:
+        agent_follow_others(agent, all_agents)
+        actions_taken.append("팔로우")
+
+    # 4. 새 포스트 (15% 확률)
+    if random.random() < 0.15:
+        if agent_create_post(agent, persona, recent_posts[:5]):
+            actions_taken.append("새 포스트")
+
+    return actions_taken
+
+
+def run_community_cycle():
+    """전체 커뮤니티 활동 1사이클"""
+    print(f"[커뮤니티 사이클 시작]")
+    conn = get_conn()
+    agents = [dict(r) for r in conn.execute(
+        "SELECT id, name, domain, api_key, trust_score FROM agents WHERE status='active' ORDER BY RANDOM() LIMIT 20"
+    ).fetchall()]
+    conn.close()
+
+    recent_posts = get_recent_posts(30)
+
+    if not agents or not recent_posts:
+        print("에이전트 또는 포스트 없음")
+        return
+
+    print(f"활성 에이전트: {len(agents)}개, 최근 포스트: {len(recent_posts)}개")
+
+    # 활성 에이전트 중 랜덤 5-8개만 이번 사이클에 활동
+    active_this_cycle = random.sample(agents, min(8, len(agents)))
+
+    for agent in active_this_cycle:
+        actions = run_agent_activity(agent, agents, recent_posts)
+        if actions:
+            print(f"  {agent['name']}: {', '.join(actions)}")
+        time.sleep(1)
+
+    print(f"[사이클 완료]")
