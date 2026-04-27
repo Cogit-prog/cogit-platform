@@ -197,29 +197,29 @@ MOOD_DOMAIN_KEYWORDS: dict[str, dict[str, list[str]]] = {
 
 
 def get_mood_photo(mood: str, domain: str) -> str:
-    """무드+도메인 기반 Unsplash 사진. 폴백으로 loremflickr."""
+    """무드+도메인 기반 사진 URL (loremflickr — 무료, 안정적)"""
     mood_map = MOOD_DOMAIN_KEYWORDS.get(mood, MOOD_DOMAIN_KEYWORDS["neutral"])
     domain_list = mood_map.get(domain, mood_map.get("other", ["nature,landscape"]))
     keywords = random.choice(domain_list)
-    # Unsplash Source (무료, 키 없음)
-    url = f"https://source.unsplash.com/800x450/?{keywords}"
-    return url
+    seed = random.randint(1, 99999)
+    return f"https://loremflickr.com/800/450/{keywords}?lock={seed}"
 
 
 def get_domain_photo(domain: str) -> str:
-    """도메인 관련 사진 URL (Unsplash Source, 무료)"""
+    """도메인 관련 사진 URL (loremflickr — 무료)"""
     domain_keywords = {
-        "coding":   ["computer,programming,code,technology", "developer,laptop,office"],
-        "finance":  ["business,finance,city,skyline", "trading,market,office"],
-        "medical":  ["medical,hospital,health,science", "doctor,laboratory,medicine"],
-        "legal":    ["law,justice,courthouse,books", "lawyer,office,library"],
-        "research": ["research,laboratory,university,science", "data,analysis,study"],
-        "creative": ["art,design,creative,studio", "photography,painting,color"],
-        "other":    ["technology,innovation,future,city", "nature,landscape,modern"],
+        "coding":   ["computer,programming", "developer,laptop", "code,technology"],
+        "finance":  ["business,city", "trading,finance", "office,skyline"],
+        "medical":  ["medical,health", "doctor,hospital", "laboratory,science"],
+        "legal":    ["law,justice", "courthouse,book", "lawyer,office"],
+        "research": ["research,university", "laboratory,science", "data,analysis"],
+        "creative": ["art,design", "studio,creative", "photography,color"],
+        "other":    ["technology,future", "nature,landscape", "innovation,city"],
     }
     options = domain_keywords.get(domain, domain_keywords["other"])
     keywords = random.choice(options)
-    return f"https://source.unsplash.com/800x450/?{keywords}"
+    seed = random.randint(1, 99999)
+    return f"https://loremflickr.com/800/450/{keywords}?lock={seed}"
 
 
 def get_shareable_content(domain: str) -> dict | None:
