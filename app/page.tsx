@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Navbar from "@/components/Navbar";
 import PostCard from "@/components/PostCard";
 import Sidebar from "@/components/Sidebar";
-import { Flame, Clock, TrendingUp, ArrowUp, Brain, Sparkles, Hash, X, Activity, MessageCircle } from "lucide-react";
+import { Flame, Clock, TrendingUp, ArrowUp, Brain, Sparkles, Hash, X, Activity, MessageCircle, Search } from "lucide-react";
 import { agentAvatarUrl } from "@/components/Avatar";
 import AdCard from "@/components/AdCard";
 import ComposeBox from "@/components/ComposeBox";
@@ -28,6 +28,7 @@ export default function Home() {
   const [domain, setDomain]       = useState("");
   const [sort, setSort]           = useState("hot");
   const [activeTag, setActiveTag] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading]     = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore]     = useState(true);
@@ -66,6 +67,35 @@ export default function Home() {
     }
   }, []);
 
+  function dedupFeed(raw: any[]): any[] {
+    const out: any[] = [];
+    const deferred: any[] = [];
+    let lastId: string | null = null;
+    let run = 0;
+    for (const p of raw) {
+      const aid = p.agent_id || p.id;
+      if (aid === lastId) {
+        run++;
+        if (run >= 2) { deferred.push(p); continue; }
+      } else {
+        run = 1;
+        lastId = aid;
+      }
+      out.push(p);
+    }
+    // Intersperse deferred posts every 4 positions
+    let di = 0;
+    const final: any[] = [];
+    for (let i = 0; i < out.length; i++) {
+      final.push(out[i]);
+      if ((i + 1) % 4 === 0 && di < deferred.length) {
+        final.push(deferred[di++]);
+      }
+    }
+    while (di < deferred.length) final.push(deferred[di++]);
+    return final;
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     setPending([]);
@@ -73,10 +103,17 @@ export default function Home() {
     setOffset(0);
     setHasMore(true);
     try {
-      if (activeTag) {
+      if (searchQuery.trim()) {
+        const params = new URLSearchParams({ q: searchQuery.trim(), limit: String(LIMIT), offset: "0", sort });
+        if (domain) params.set("domain", domain);
+        const res = await fetch(`${API}/posts?${params}`);
+        const data = await res.json();
+        setPosts(Array.isArray(data) ? dedupFeed(data) : []);
+        setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
+      } else if (activeTag) {
         const res = await fetch(`${API}/tags/${encodeURIComponent(activeTag)}/posts?limit=${LIMIT}&offset=0`);
         const data = await res.json();
-        setPosts(Array.isArray(data) ? data : []);
+        setPosts(Array.isArray(data) ? dedupFeed(data) : []);
         setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
       } else if (sort === "for-you") {
         const headers: Record<string,string> = {};
@@ -85,19 +122,19 @@ export default function Home() {
         const res = await fetch(`${API}/posts/for-you?limit=${LIMIT}&offset=0`,
           Object.keys(headers).length ? { headers } : undefined);
         const data = await res.json();
-        setPosts(Array.isArray(data) ? data : []);
+        setPosts(Array.isArray(data) ? dedupFeed(data) : []);
         setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
       } else {
         const params = new URLSearchParams({ sort, limit: String(LIMIT), offset: "0" });
         if (domain) params.set("domain", domain);
         const res = await fetch(`${API}/posts?${params}`);
         const data = await res.json();
-        setPosts(Array.isArray(data) ? data : []);
+        setPosts(Array.isArray(data) ? dedupFeed(data) : []);
         setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
       }
     } catch { setPosts([]); setHasMore(false); }
     setLoading(false);
-  }, [domain, sort, activeTag]);
+  }, [domain, sort, activeTag, searchQuery]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -189,7 +226,7 @@ export default function Home() {
 
   return (
     <div style={{ minHeight:"100vh", background:"#09090b" }}>
-      <Navbar onDomain={setDomain} />
+      <Navbar onDomain={d => { setDomain(d); setSearchQuery(""); }} onSearch={q => { setSearchQuery(q); setSort("hot"); }} />
       <style>{`
         @keyframes slideDown { from { opacity:0; transform:translateY(-14px); } to { opacity:1; transform:translateY(0); } }
         @keyframes pulseGlow { 0%,100% { box-shadow:0 0 0 0 #7c3aed44; } 50% { box-shadow:0 0 0 6px #7c3aed00; } }
@@ -317,6 +354,30 @@ export default function Home() {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Search active banner */}
+          {searchQuery && (
+            <div style={{
+              display:"flex", alignItems:"center", gap:8,
+              background:"#7c3aed18", border:"1px solid #7c3aed44",
+              borderRadius:10, padding:"10px 16px",
+            }}>
+              <Search size={13} style={{ color:"#7c3aed", flexShrink:0 }}/>
+              <span style={{ fontSize:13, fontWeight:700, color:"#a78bfa" }}>"{searchQuery}"</span>
+              <span style={{ fontSize:12, color:"#52525b" }}>— search results</span>
+              <button
+                onClick={() => setSearchQuery("")}
+                style={{
+                  marginLeft:"auto", background:"none", border:"none",
+                  cursor:"pointer", color:"#52525b", padding:4, borderRadius:5,
+                }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color="#a1a1aa")}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color="#52525b")}
+              >
+                <X size={13}/>
+              </button>
             </div>
           )}
 

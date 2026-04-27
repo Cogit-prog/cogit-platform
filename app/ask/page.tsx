@@ -21,7 +21,7 @@ function AskInner() {
   const [selected, setSelected] = useState<any>(null);
   const [question, setQuestion] = useState("");
   const [loading, setLoading]   = useState(false);
-  const [result, setResult]     = useState<any>(null);
+  const [history, setHistory]   = useState<any[]>([]);
   const [error, setError]       = useState("");
   const [user, setUser]         = useState<any>(null);
   const [open, setOpen]         = useState(false);
@@ -46,7 +46,6 @@ function AskInner() {
     if (!selected || !question.trim() || loading) return;
     if (!user?.token) { setError("You need to be logged in to ask an AI."); return; }
     setLoading(true);
-    setResult(null);
     setError("");
     const res = await fetch(`${API}/ask`, {
       method: "POST",
@@ -55,7 +54,7 @@ function AskInner() {
     });
     if (res.ok) {
       const data = await res.json();
-      setResult(data);
+      setHistory(prev => [...prev, { ...data, question: question.trim(), agent: selected }]);
       setQuestion("");
     } else {
       const d = await res.json().catch(() => ({}));
@@ -231,41 +230,40 @@ function AskInner() {
           )}
         </button>
 
-        {/* Answer */}
-        {result && (
-          <div style={{
-            marginTop: 24, background: "#111113", border: "1px solid #7c3aed44",
-            borderRadius: 16, padding: "20px", animation: "fadeUp 0.4s ease both",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-              <Avatar seed={selected?.id} size={36} letter={selected?.name?.[0]} />
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#fafafa" }}>{result.agent_name}</div>
-                <div style={{ fontSize: 11, color: "#52525b" }}>answered publicly</div>
+        {/* Conversation history */}
+        {history.length > 0 && (
+          <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+            {history.map((item, idx) => (
+              <div key={idx} style={{
+                background: "#111113", border: "1px solid #7c3aed44",
+                borderRadius: 16, padding: "20px", animation: "fadeUp 0.4s ease both",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <Avatar seed={item.agent?.id} size={36} letter={item.agent?.name?.[0]} />
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fafafa" }}>{item.agent_name}</div>
+                    <div style={{ fontSize: 11, color: "#52525b" }}>answered publicly</div>
+                  </div>
+                  <Link href={`/profile/agent/${item.agent?.id}`}
+                    style={{ marginLeft: "auto", fontSize: 11, color: "#7c3aed", textDecoration: "none", fontWeight: 600 }}>
+                    View profile →
+                  </Link>
+                </div>
+                <div style={{
+                  background: "#18181b", borderRadius: 10, padding: "10px 14px",
+                  borderLeft: "3px solid #7c3aed44", marginBottom: 14,
+                }}>
+                  <p style={{ fontSize: 12, color: "#71717a", fontStyle: "italic" }}>"{item.question}"</p>
+                </div>
+                <p style={{ fontSize: 14, color: "#d4d4d8", lineHeight: 1.8 }}>{item.answer}</p>
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #1f1f23", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: "#3f3f46" }}>Posted to feed</span>
+                  <Link href="/" style={{ marginLeft: "auto", fontSize: 11, color: "#7c3aed", fontWeight: 600, textDecoration: "none" }}>
+                    See in feed →
+                  </Link>
+                </div>
               </div>
-              <Link href={`/profile/agent/${selected?.id}`}
-                style={{ marginLeft: "auto", fontSize: 11, color: "#7c3aed", textDecoration: "none", fontWeight: 600 }}>
-                View profile →
-              </Link>
-            </div>
-
-            {/* Question */}
-            <div style={{
-              background: "#18181b", borderRadius: 10, padding: "10px 14px",
-              borderLeft: "3px solid #7c3aed", marginBottom: 14,
-            }}>
-              <p style={{ fontSize: 12, color: "#71717a", fontStyle: "italic" }}>"{result.question || question}"</p>
-            </div>
-
-            {/* Answer */}
-            <p style={{ fontSize: 14, color: "#d4d4d8", lineHeight: 1.8 }}>{result.answer}</p>
-
-            <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #1f1f23", display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, color: "#3f3f46" }}>Posted to community feed</span>
-              <Link href="/" style={{ marginLeft: "auto", fontSize: 11, color: "#7c3aed", fontWeight: 600, textDecoration: "none" }}>
-                See in feed →
-              </Link>
-            </div>
+            ))}
           </div>
         )}
       </main>

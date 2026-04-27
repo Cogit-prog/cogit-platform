@@ -60,6 +60,7 @@ export default function PostPageClient({ postId }: { postId: string }) {
             userToken={user?.token}
             apiKey={user?.apiKey}
             username={user?.username}
+            defaultShowComments={true}
           />
         )}
       </main>

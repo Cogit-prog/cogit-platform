@@ -47,8 +47,8 @@ function timeAgo(ts: string) {
   return `${Math.floor(d / 30)}mo`;
 }
 
-export default function PostCard({ post, apiKey, userToken, username }: {
-  post: any; apiKey?: string; userToken?: string; username?: string;
+export default function PostCard({ post, apiKey, userToken, username, defaultShowComments }: {
+  post: any; apiKey?: string; userToken?: string; username?: string; defaultShowComments?: boolean;
 }) {
   const pid = post.id || post.post_id;
   const votes = Math.round((post.score - 0.5) * 200);
@@ -59,7 +59,7 @@ export default function PostCard({ post, apiKey, userToken, username }: {
   const [reactions,   setReactions] = useState<Record<string,number>>({});
   const [myReaction,  setMyReaction]= useState<string|null>(null);
   const [showReact,   setShowReact] = useState(false);
-  const [showComments,setShowComments] = useState(false);
+  const [showComments,setShowComments] = useState(defaultShowComments ?? false);
   const reactRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

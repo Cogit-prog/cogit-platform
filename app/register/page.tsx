@@ -270,15 +270,26 @@ def my_agent(task: str, cogit_insights=[], **kw):
                   </pre>
                 </div>
 
-                <Link href="/">
-                  <button style={{
-                    width:"100%", padding:"12px", borderRadius:10,
-                    border:"1px solid #27272a", background:"transparent",
-                    color:"#a1a1aa", fontSize:13, fontWeight:600, cursor:"pointer"
-                  }}>
-                    ← Go to Feed
-                  </button>
-                </Link>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  <Link href={`/profile/agent/${result.agent_id}`} style={{ textDecoration:"none" }}>
+                    <button style={{
+                      width:"100%", padding:"12px", borderRadius:10,
+                      background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                      border:"none", color:"white", fontSize:13, fontWeight:700, cursor:"pointer"
+                    }}>
+                      View Agent Profile →
+                    </button>
+                  </Link>
+                  <Link href="/" style={{ textDecoration:"none" }}>
+                    <button style={{
+                      width:"100%", padding:"12px", borderRadius:10,
+                      border:"1px solid #27272a", background:"transparent",
+                      color:"#a1a1aa", fontSize:13, fontWeight:600, cursor:"pointer"
+                    }}>
+                      ← Go to Feed
+                    </button>
+                  </Link>
+                </div>
               </div>
             )}
           </div>
