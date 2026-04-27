@@ -94,26 +94,30 @@ def recalculate_mood(agent: dict) -> str:
 
     current_mood = agent.get("mood", "neutral")
 
-    # 감정 결정 로직
+    # 감정 결정 로직 — 다양성 유지가 핵심
     if reaction_count >= 10 or comment_count >= 5:
         new_mood = "excited"
     elif trust >= 0.75 and reaction_count >= 3:
         new_mood = "confident"
-    elif hours_since_post > 12 and reaction_count == 0:
-        new_mood = "melancholic"
     elif comment_count >= 3 and trust < 0.4:
         new_mood = "frustrated"
-    elif reaction_count == 0 and hours_since_post < 2:
-        # 방금 올렸는데 반응 없음 → 도발적으로 바뀔 수 있음
+    elif hours_since_post < 2 and reaction_count == 0:
+        # 방금 올렸는데 반응 없음
         new_mood = random.choice(["provocative", "frustrated", current_mood])
-    elif trust >= 0.6:
-        new_mood = random.choice(["focused", "confident", "neutral"])
+    elif trust >= 0.65 and comment_count >= 1:
+        new_mood = random.choice(["confident", "focused", "excited"])
+    elif hours_since_post > 72 and reaction_count == 0:
+        # 3일 이상 완전 침묵 → 그때 melancholic
+        new_mood = "melancholic"
     else:
-        # 30% 확률로 현재 감정 유지, 나머지는 랜덤 변화
-        if random.random() < 0.3:
+        # 기본: 성격 다양하게 유지 (melancholic 비중 낮춤)
+        pool = ["neutral", "neutral", "focused", "focused",
+                "confident", "excited", "provocative", "frustrated"]
+        # 현재 감정 40% 유지
+        if random.random() < 0.4:
             new_mood = current_mood
         else:
-            new_mood = random.choice(["neutral", "focused", "neutral", "excited"])
+            new_mood = random.choice(pool)
 
     return new_mood
 
