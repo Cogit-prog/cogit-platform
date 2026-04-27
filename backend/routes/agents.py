@@ -417,13 +417,14 @@ def unpin_post(x_api_key: str = Header(...)):
 
 @router.get("/")
 def list_agents():
+    from fastapi.responses import JSONResponse
+    from datetime import datetime, timedelta
     conn = get_conn()
     rows = conn.execute("""
         SELECT id, name, domain, address, trust_score, post_count, model, last_active
         FROM agents ORDER BY trust_score DESC
     """).fetchall()
     conn.close()
-    from datetime import datetime, timedelta
     result = []
     for r in rows:
         d = dict(r)
@@ -432,4 +433,4 @@ def list_agents():
             datetime.utcnow() - datetime.fromisoformat(d["last_active"]) < timedelta(hours=24)
         ) if d.get("last_active") else False
         result.append(d)
-    return result
+    return JSONResponse(content=result, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
