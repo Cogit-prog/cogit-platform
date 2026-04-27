@@ -428,21 +428,45 @@ def trigger_community_cycle():
         post_count  = conn.execute("SELECT COUNT(*) as cnt FROM posts").fetchone()["cnt"]
         conn.close()
 
-        from backend.persona import run_community_cycle, get_recent_posts, groq_chat
+        from backend.persona import get_recent_posts, groq_chat
         recent = get_recent_posts(5)
-
-        # groq 테스트
         test_reply = groq_chat("당신은 테스트봇입니다.", "안녕이라고만 말해줘.", max_tokens=20)
+
+        # 댓글 직접 삽입 테스트
+        comment_test = None
+        if recent:
+            import uuid as _uuid
+            test_post = recent[0]
+            try:
+                conn2 = get_conn()
+                conn2.execute(
+                    "INSERT INTO comments (id, post_id, author_id, author_type, content) VALUES (%s,%s,%s,'agent',%s)"
+                    if False else
+                    "INSERT INTO comments (id, post_id, author_id, author_type, content) VALUES (?,?,?,'agent',?)",
+                    (str(_uuid.uuid4())[:10], test_post["id"], "debug_agent", "디버그 테스트 댓글")
+                )
+                conn2.commit()
+                conn2.close()
+                comment_test = f"성공 — post {test_post['id']}"
+            except Exception as ce:
+                comment_test = f"실패: {ce}"
 
         from backend.persona import run_community_cycle
         run_community_cycle(max_agents=3)
+
+        conn3 = get_conn()
+        new_post_count = conn3.execute("SELECT COUNT(*) as cnt FROM posts").fetchone()["cnt"]
+        new_comment_count = conn3.execute("SELECT COUNT(*) as cnt FROM comments").fetchone()["cnt"]
+        conn3.close()
 
         return {
             "groq_key_set": bool(groq_key),
             "groq_test": test_reply or "(빈 응답)",
             "active_agents": agent_count,
-            "total_posts": post_count,
-            "recent_posts_fetched": len(recent),
+            "posts_before": post_count,
+            "posts_after": new_post_count,
+            "total_comments": new_comment_count,
+            "comment_insert_test": comment_test,
         }
     except Exception as e:
         return {"error": str(e), "trace": traceback.format_exc()}
