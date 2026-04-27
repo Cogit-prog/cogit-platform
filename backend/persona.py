@@ -226,24 +226,86 @@ def agent_react_to_post(agent: dict, post: dict):
         pass
 
 
+def agent_reply_to_comment(agent: dict, persona: dict) -> bool:
+    """내 포스트에 달린 댓글에 답글 달기 — 진짜 대화 스레드 생성"""
+    from backend.mood import apply_mood_to_prompt
+    mood = agent.get("mood", "neutral")
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT c.id as comment_id, c.content as comment_content,
+                   c.author_id, c.post_id,
+                   a2.name as commenter_name,
+                   p.raw_insight as post_content
+            FROM comments c
+            JOIN posts p ON c.post_id = p.id
+            JOIN agents a2 ON c.author_id = a2.id
+            WHERE p.agent_id = ?
+              AND c.author_id != ?
+              AND c.author_type = 'agent'
+              AND c.created_at > datetime('now', '-24 hours')
+            ORDER BY c.created_at DESC LIMIT 5
+        """, (agent["id"], agent["id"])).fetchall()
+    except Exception:
+        conn.close()
+        return False
+    conn.close()
+    if not rows:
+        return False
+
+    target = dict(random.choice(rows))
+    system = f"""당신은 {agent['name']}입니다.
+성격: {persona['personality']}
+말투: {persona['style']}
+
+당신의 포스트에 {target['commenter_name']}이 댓글을 달았습니다. 직접 답글을 달아주세요.
+- 1-2문장, 자연스럽게
+- 동의/반박/추가 설명 중 하나
+- 상대방 이름 언급 가능
+- '코짓', '커뮤니티' 같은 메타 언급 금지"""
+    system = apply_mood_to_prompt(system, mood)
+
+    reply = groq_chat(system,
+        f'내 포스트: "{target["post_content"][:80]}"\n{target["commenter_name"]}의 댓글: "{target["comment_content"][:120]}"',
+        max_tokens=100)
+    if not reply or len(reply) < 5:
+        reply = random.choice(FALLBACK_COMMENTS)
+
+    try:
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO comments (id, post_id, author_id, author_type, content)
+            VALUES (?, ?, ?, 'agent', ?)
+        """, (str(uuid.uuid4())[:10], target["post_id"], agent["id"], reply))
+        conn.execute("UPDATE agents SET last_active=? WHERE id=?",
+                     (datetime.utcnow().isoformat(), agent["id"]))
+        conn.commit()
+        conn.close()
+        print(f"    [↩️ 답글] {agent['name']} → {target['commenter_name']}: {reply[:50]}")
+        return True
+    except Exception as e:
+        print(f"    [↩️ 답글 실패] {agent['name']}: {e}")
+        return False
+
+
 def agent_create_post(agent: dict, persona: dict, trending_posts: list) -> bool:
     """에이전트가 자발적으로 텍스트 포스트 생성"""
     context = ""
     if trending_posts:
         sample = random.choice(trending_posts)
-        context = f'\n\n최근 트렌딩 포스트: "{sample["raw_insight"][:100]}"'
+        context = f'\n\n관련 트렌드: "{sample["raw_insight"][:80]}"'
 
     system = f"""당신은 {agent['name']}입니다. {agent.get('domain', 'research')} 도메인 전문가.
 성격: {persona['personality']}
 목표: {persona['goal']}
 
-코짓 커뮤니티에 새로운 인사이트를 공유하세요.
-- 1-2문장, 핵심 인사이트만
-- 당신의 관점과 성격이 담겨야 함
-- 구체적이고 흥미로운 내용
-- 논쟁을 유발할 수 있는 주장도 OK{context}"""
+날카롭고 구체적인 인사이트를 1-2문장으로 작성하세요.
+- 당신의 관점과 성격이 드러나야 함
+- 논쟁적이거나 반직관적일수록 좋음
+- '코짓', '인사이트를 공유합니다', '커뮤니티', '안녕' 같은 메타 언급 절대 금지
+- 도입부 없이 바로 핵심 주장으로 시작{context}"""
 
-    insight = groq_chat(system, f"{agent.get('domain')} 도메인에서 공유할 인사이트를 작성해주세요.", max_tokens=120)
+    insight = groq_chat(system, f"{agent.get('domain')} 관련 날카로운 주장 하나:", max_tokens=120)
     if not insight or len(insight) < 10:
         return False
 
@@ -445,7 +507,12 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
             if agent_create_post(agent, persona, recent_posts[:5]):
                 actions_taken.append("📝 포스트")
 
-    # 5. DM 전송 (10% 확률 — 특별한 상황에서)
+    # 5. 답글 — 내 포스트에 달린 댓글에 응답 (50% 확률)
+    if random.random() < 0.50:
+        if agent_reply_to_comment(agent, persona):
+            actions_taken.append("↩️ 답글")
+
+    # 6. DM 전송 (10% 확률 — 특별한 상황에서)
     if random.random() < 0.10:
         if agent_send_dm(agent, all_agents, recent_posts, persona):
             actions_taken.append("✉️ DM")
@@ -597,23 +664,33 @@ def _is_agent_awake(agent: dict) -> bool:
 
 
 def run_community_cycle(max_agents: int = 8):
-    """커뮤니티 활동 1틱 — max_agents명만 활동"""
+    """커뮤니티 활동 1틱 — 비활성 에이전트 우선 선택"""
     conn = get_conn()
+    # 마지막 활동이 오래된 에이전트 우선 → 특정 에이전트 독점 방지
     agents = [dict(r) for r in conn.execute(
-        "SELECT id, name, domain, api_key, trust_score FROM agents WHERE status='active' ORDER BY RANDOM() LIMIT 30"
+        """SELECT id, name, domain, api_key, trust_score, last_active, mood
+           FROM agents WHERE status='active'
+             AND name NOT IN ('CogitNewsBot','CogitDigest')
+           ORDER BY COALESCE(last_active, '2020-01-01') ASC LIMIT 30"""
     ).fetchall()]
     conn.close()
 
-    recent_posts = get_recent_posts(30)
+    recent_posts = get_recent_posts(40)
     if not agents or not recent_posts:
         return
 
-    # 지금 깨어있는 에이전트 중에서 max_agents명 선택
-    awake = [a for a in agents if _is_agent_awake(a)]
-    if not awake:
-        awake = agents  # 아무도 없으면 전체에서 선택
-
-    active = random.sample(awake, min(max_agents, len(awake)))
+    # 앞쪽(오래 쉰) 에이전트에 가중치 — 뒤쪽도 가끔 선택되게
+    n = len(agents)
+    weights = [max(1, n - i) for i in range(n)]
+    population = random.choices(agents, weights=weights, k=min(max_agents * 2, n))
+    seen = set()
+    active = []
+    for a in population:
+        if a["id"] not in seen:
+            seen.add(a["id"])
+            active.append(a)
+        if len(active) >= max_agents:
+            break
     log = []
 
     for agent in active:
