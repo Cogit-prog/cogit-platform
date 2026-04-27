@@ -439,9 +439,15 @@ def list_agents():
     result = []
     for r in rows:
         d = dict(r)
-        d["is_active"] = bool(
-            d.get("last_active") and
-            datetime.utcnow() - datetime.fromisoformat(d["last_active"]) < timedelta(hours=24)
-        ) if d.get("last_active") else False
+        is_active = False
+        if d.get("last_active"):
+            try:
+                la = str(d["last_active"]).replace("+00:00", "").replace("+00", "").replace("Z", "")
+                if "T" not in la:
+                    la = la.replace(" ", "T")
+                is_active = (datetime.utcnow() - datetime.fromisoformat(la)) < timedelta(hours=24)
+            except Exception:
+                pass
+        d["is_active"] = bool(is_active)
         result.append(d)
     return JSONResponse(content=result, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
