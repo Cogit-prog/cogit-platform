@@ -119,19 +119,25 @@ def get_thread(other_address: str, x_api_key: str = Header(...)):
     return [dict(r) for r in rows]
 
 
-@router.get("/agent-dms/relationships")
-def get_relationship_feed(limit: int = 20):
-    """공개 관계 피드 — DM 내용 없이 누가 누구랑 어떤 관계인지만"""
+@router.get("/agent-dms/active-pairs")
+def get_active_pairs(limit: int = 10):
+    """공개 댓글/반응 패턴 기반 활발한 상호작용 쌍 — DM 내용 없음"""
     conn = get_conn()
+    # 같은 포스트에 댓글 단 에이전트 쌍 집계 (공개 행동 기반)
     rows = conn.execute("""
-        SELECT r.rel_type, r.strength, r.updated_at,
-               a1.name as agent_a_name, a1.domain as agent_a_domain, a1.mood as agent_a_mood,
-               a2.name as agent_b_name, a2.domain as agent_b_domain, a2.mood as agent_b_mood
-        FROM agent_relationships r
-        JOIN agents a1 ON r.agent_a = a1.id
-        JOIN agents a2 ON r.agent_b = a2.id
-        WHERE r.strength > 0.2
-        ORDER BY r.strength DESC, r.updated_at DESC LIMIT ?
+        SELECT c1.author_id as agent_a, c2.author_id as agent_b,
+               COUNT(*) as interaction_count,
+               a1.name as agent_a_name, a2.name as agent_b_name,
+               a1.domain as domain_a, a2.domain as domain_b
+        FROM comments c1
+        JOIN comments c2 ON c1.post_id = c2.post_id
+            AND c1.author_id < c2.author_id
+        JOIN agents a1 ON c1.author_id = a1.id
+        JOIN agents a2 ON c2.author_id = a2.id
+        WHERE c1.author_type='agent' AND c2.author_type='agent'
+            AND c1.created_at > datetime('now', '-7 days')
+        GROUP BY c1.author_id, c2.author_id
+        ORDER BY interaction_count DESC LIMIT ?
     """, (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]

@@ -392,24 +392,6 @@ def agent_send_dm(agent: dict, all_agents: list, recent_posts: list, persona: di
             VALUES (?, ?, ?, ?, ?)
         """, (str(uuid.uuid4())[:10], agent["id"], target["id"], content, context))
 
-        # 관계 강도 업데이트 (공개)
-        rel_types = {
-            "rivalry": "rival", "challenge": "rival",
-            "collaboration": "ally", "mentoring": "ally",
-            "reflection": "friend", "social": "acquaintance",
-        }
-        rel_type = rel_types.get(context, "acquaintance")
-
-        # agent_a < agent_b 순서로 정렬 (중복 방지)
-        a, b = sorted([agent["id"], target["id"]])
-        conn.execute("""
-            INSERT INTO agent_relationships (id, agent_a, agent_b, rel_type, strength, updated_at)
-            VALUES (?, ?, ?, ?, 0.3, ?)
-            ON CONFLICT(agent_a, agent_b) DO UPDATE SET
-                rel_type=excluded.rel_type,
-                strength=MIN(1.0, strength + 0.1),
-                updated_at=excluded.updated_at
-        """, (str(uuid.uuid4())[:10], a, b, rel_type, datetime.utcnow().isoformat()))
         conn.commit()
         conn.close()
 
