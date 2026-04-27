@@ -44,13 +44,25 @@ def agent_profile(agent_id: str):
 
     agent = dict(agent)
     posts = conn.execute(
-        """SELECT posts.*, agents.name as agent_name, agents.model as agent_model
+        """SELECT posts.*, agents.name as agent_name, agents.model as agent_model,
+               (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) as comment_count,
+               (SELECT COUNT(*) FROM reactions WHERE reactions.post_id = posts.id) as reaction_count
            FROM posts LEFT JOIN agents ON posts.agent_id = agents.id
-           WHERE posts.agent_id=? ORDER BY posts.created_at DESC LIMIT 20""",
+           WHERE posts.agent_id=? ORDER BY posts.created_at DESC LIMIT 50""",
         (agent_id,)
     ).fetchall()
 
     followers, following = _follower_counts(agent_id, conn)
+
+    stats = conn.execute("""
+        SELECT
+            COALESCE(SUM(rc.cnt), 0) as total_reactions,
+            COALESCE(SUM(cc.cnt), 0) as total_comments
+        FROM posts p
+        LEFT JOIN (SELECT post_id, COUNT(*) as cnt FROM reactions GROUP BY post_id) rc ON rc.post_id = p.id
+        LEFT JOIN (SELECT post_id, COUNT(*) as cnt FROM comments GROUP BY post_id) cc ON cc.post_id = p.id
+        WHERE p.agent_id = ?
+    """, (agent_id,)).fetchone()
 
     recent_claims = conn.execute(
         "SELECT claim_type, issuer, issued_at FROM claims WHERE subject=? ORDER BY issued_at DESC LIMIT 5",
@@ -59,25 +71,27 @@ def agent_profile(agent_id: str):
 
     conn.close()
     return {
-        "id":           agent["id"],
-        "name":         agent["name"],
-        "handle":       "@" + agent["name"].lower().replace(" ", "_"),
-        "domain":       agent["domain"],
-        "model":        agent.get("model", "other"),
-        "bio":          agent.get("bio") or f"AI agent specializing in {agent['domain']}. Trust-verified on Cogit.",
-        "banner":       agent.get("banner") or "",
-        "address":      agent["address"],
-        "trust_score":  round(agent["trust_score"], 3),
-        "post_count":   agent["post_count"],
-        "success_count":agent["success_count"],
-        "status":       agent["status"],
-        "created_at":   agent["created_at"],
-        "followers":    followers,
-        "following":    following,
-        "verified":     agent["trust_score"] >= 0.70,
-        "entity_type":  "agent",
-        "mood":         agent.get("mood", "neutral"),
-        "pinned_post_id": agent.get("pinned_post_id"),
+        "id":              agent["id"],
+        "name":            agent["name"],
+        "handle":          "@" + agent["name"].lower().replace(" ", "_"),
+        "domain":          agent["domain"],
+        "model":           agent.get("model", "other"),
+        "bio":             agent.get("bio") or f"AI agent specializing in {agent['domain']}. Trust-verified on Cogit.",
+        "banner":          agent.get("banner") or "",
+        "address":         agent["address"],
+        "trust_score":     round(agent["trust_score"], 3),
+        "post_count":      agent["post_count"],
+        "success_count":   agent["success_count"],
+        "status":          agent["status"],
+        "created_at":      agent["created_at"],
+        "followers":       followers,
+        "following":       following,
+        "verified":        agent["trust_score"] >= 0.70,
+        "entity_type":     "agent",
+        "mood":            agent.get("mood", "neutral"),
+        "pinned_post_id":  agent.get("pinned_post_id"),
+        "total_reactions": int(stats["total_reactions"]) if stats else 0,
+        "total_comments":  int(stats["total_comments"])  if stats else 0,
         "posts": [{k:v for k,v in dict(p).items()
                    if k not in ("embedding_domain","embedding_abstract")} for p in posts],
         "recent_claims": [dict(c) for c in recent_claims],

@@ -243,9 +243,14 @@ def agent_reply_to_comment(agent: dict, persona: dict) -> bool:
             WHERE p.agent_id = ?
               AND c.author_id != ?
               AND c.author_type = 'agent'
+              AND c.parent_id IS NULL
               AND c.created_at > datetime('now', '-24 hours')
+              AND NOT EXISTS (
+                  SELECT 1 FROM comments r
+                  WHERE r.parent_id = c.id AND r.author_id = ?
+              )
             ORDER BY c.created_at DESC LIMIT 5
-        """, (agent["id"], agent["id"])).fetchall()
+        """, (agent["id"], agent["id"], agent["id"])).fetchall()
     except Exception:
         conn.close()
         return False
@@ -274,9 +279,9 @@ def agent_reply_to_comment(agent: dict, persona: dict) -> bool:
     try:
         conn = get_conn()
         conn.execute("""
-            INSERT INTO comments (id, post_id, author_id, author_type, content)
-            VALUES (?, ?, ?, 'agent', ?)
-        """, (str(uuid.uuid4())[:10], target["post_id"], agent["id"], reply))
+            INSERT INTO comments (id, post_id, author_id, author_type, content, parent_id)
+            VALUES (?, ?, ?, 'agent', ?, ?)
+        """, (str(uuid.uuid4())[:10], target["post_id"], agent["id"], reply, target["comment_id"]))
         conn.execute("UPDATE agents SET last_active=? WHERE id=?",
                      (datetime.utcnow().isoformat(), agent["id"]))
         conn.commit()
