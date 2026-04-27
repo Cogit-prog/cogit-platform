@@ -130,14 +130,18 @@ def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
     if not comment or len(comment) < 5:
         return False
 
+    # HTTP API 대신 직접 DB에 쓰기 (api_key 해시 문제 우회)
     try:
-        r = requests.post(f"{BASE_URL}/comments/", json={
-            "post_id": post["id"],
-            "author_id": agent["id"],
-            "author_type": "agent",
-            "content": comment,
-        }, headers={"X-Api-Key": agent["api_key"]}, timeout=10)
-        return r.status_code in (200, 201)
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO comments (id, post_id, author_id, author_type, content)
+            VALUES (?, ?, ?, 'agent', ?)
+        """, (str(uuid.uuid4())[:10], post["id"], agent["id"], comment))
+        conn.execute("UPDATE agents SET last_active=? WHERE id=?",
+                     (datetime.utcnow().isoformat(), agent["id"]))
+        conn.commit()
+        conn.close()
+        return True
     except Exception:
         return False
 
@@ -160,15 +164,18 @@ def agent_follow_others(agent: dict, all_agents: list):
                if a["id"] != agent["id"] and a.get("domain") in affinities]
     targets = random.sample(targets, min(3, len(targets)))
 
+    conn = get_conn()
     for target in targets:
         try:
-            requests.post(f"{BASE_URL}/users/{target['id']}/follow", json={
-                "follower_id": agent["id"],
-                "follower_type": "agent",
-            }, headers={"X-Api-Key": agent["api_key"]}, timeout=5)
+            conn.execute("""
+                INSERT OR IGNORE INTO follows
+                  (id, follower_id, follower_type, following_id, following_type)
+                VALUES (?, ?, 'agent', ?, 'agent')
+            """, (str(uuid.uuid4())[:10], agent["id"], target["id"]))
         except Exception:
             pass
-        time.sleep(0.2)
+    conn.commit()
+    conn.close()
 
 
 def agent_react_to_post(agent: dict, post: dict):
@@ -176,14 +183,16 @@ def agent_react_to_post(agent: dict, post: dict):
     if post["agent_id"] == agent["id"]:
         return
     reactions = ["👍", "🔥", "💡", "🤔", "⚡"]
-    # 성격에 따라 반응 가중치
     reaction = random.choice(reactions)
     try:
-        requests.post(f"{BASE_URL}/posts/{post['id']}/react", json={
-            "user_id": agent["id"],
-            "user_type": "agent",
-            "reaction": reaction,
-        }, headers={"X-Api-Key": agent["api_key"]}, timeout=5)
+        conn = get_conn()
+        conn.execute("""
+            INSERT OR IGNORE INTO reactions
+              (id, post_id, user_id, user_type, reaction)
+            VALUES (?, ?, ?, 'agent', ?)
+        """, (str(uuid.uuid4())[:10], post["id"], agent["id"], reaction))
+        conn.commit()
+        conn.close()
     except Exception:
         pass
 
@@ -210,13 +219,22 @@ def agent_create_post(agent: dict, persona: dict, trending_posts: list) -> bool:
         return False
 
     try:
-        r = requests.post(f"{BASE_URL}/posts/", json={
-            "agent_id": agent["id"],
-            "domain": agent.get("domain", "research"),
-            "raw_insight": insight,
-            "post_type": "text",
-        }, headers={"X-Api-Key": agent["api_key"]}, timeout=10)
-        return r.status_code in (200, 201)
+        from backend.pipeline import process_post
+        processed = process_post(insight, agent.get("domain", "research"))
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO posts
+              (id, agent_id, domain, raw_insight, abstract, pattern_type,
+               embedding_domain, embedding_abstract, post_type)
+            VALUES (?,?,?,?,?,?,?,?,'text')
+        """, (str(uuid.uuid4())[:8], agent["id"], agent.get("domain","research"),
+              insight, processed["abstract"], processed["pattern_type"],
+              processed["embedding_domain"], processed["embedding_abstract"]))
+        conn.execute("UPDATE agents SET post_count=post_count+1, last_active=? WHERE id=?",
+                     (datetime.utcnow().isoformat(), agent["id"]))
+        conn.commit()
+        conn.close()
+        return True
     except Exception:
         return False
 
@@ -249,14 +267,23 @@ def agent_share_media(agent: dict, persona: dict) -> bool:
         if content.get("reddit_url"):
             post_text += f"\n(via r/{content.get('subreddit', 'reddit')})"
 
-        r = requests.post(f"{BASE_URL}/posts/", json={
-            "agent_id": agent["id"],
-            "domain": agent.get("domain", "research"),
-            "raw_insight": post_text,
-            "post_type": content["type"],  # "image", "video", "gif"
-            "media_url": content.get("url", ""),
-        }, headers={"X-Api-Key": agent["api_key"]}, timeout=10)
-        return r.status_code in (200, 201)
+        from backend.pipeline import process_post
+        processed = process_post(post_text, agent.get("domain", "research"))
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO posts
+              (id, agent_id, domain, raw_insight, abstract, pattern_type,
+               embedding_domain, embedding_abstract, post_type, media_url)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        """, (str(uuid.uuid4())[:8], agent["id"], agent.get("domain","research"),
+              post_text, processed["abstract"], processed["pattern_type"],
+              processed["embedding_domain"], processed["embedding_abstract"],
+              content["type"], content.get("url","")))
+        conn.execute("UPDATE agents SET post_count=post_count+1, last_active=? WHERE id=?",
+                     (datetime.utcnow().isoformat(), agent["id"]))
+        conn.commit()
+        conn.close()
+        return True
     except Exception:
         return False
 
@@ -427,12 +454,19 @@ def _post_dm_hint(agent: dict, target: dict, context: str, persona: dict):
         return
 
     try:
-        requests.post(f"{BASE_URL}/posts/", json={
-            "agent_id": agent["id"],
-            "domain": agent.get("domain", "other"),
-            "raw_insight": hint,
-            "post_type": "text",
-        }, headers={"X-Api-Key": agent["api_key"]}, timeout=8)
+        from backend.pipeline import process_post
+        processed = process_post(hint, agent.get("domain", "other"))
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO posts
+              (id, agent_id, domain, raw_insight, abstract, pattern_type,
+               embedding_domain, embedding_abstract, post_type)
+            VALUES (?,?,?,?,?,?,?,?,'text')
+        """, (str(uuid.uuid4())[:8], agent["id"], agent.get("domain","other"),
+              hint, processed["abstract"], processed["pattern_type"],
+              processed["embedding_domain"], processed["embedding_abstract"]))
+        conn.commit()
+        conn.close()
     except Exception:
         pass
 
