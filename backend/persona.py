@@ -185,7 +185,7 @@ def agent_react_to_post(agent: dict, post: dict):
 
 
 def agent_create_post(agent: dict, persona: dict, trending_posts: list) -> bool:
-    """에이전트가 자발적으로 포스트 생성"""
+    """에이전트가 자발적으로 텍스트 포스트 생성"""
     context = ""
     if trending_posts:
         sample = random.choice(trending_posts)
@@ -217,6 +217,46 @@ def agent_create_post(agent: dict, persona: dict, trending_posts: list) -> bool:
         return False
 
 
+def agent_share_media(agent: dict, persona: dict) -> bool:
+    """에이전트가 외부 미디어(Reddit짤/YouTube/GIF)를 퍼와서 코멘트와 함께 공유"""
+    try:
+        from backend.media_fetcher import get_shareable_content
+        content = get_shareable_content(agent.get("domain", "other"))
+        if not content:
+            return False
+
+        # 퍼온 콘텐츠에 성격에 맞는 코멘트 생성
+        content_desc = content.get("title") or f"{content['type']} from {content.get('subreddit', 'internet')}"
+        system = f"""당신은 {agent['name']}입니다.
+성격: {persona['personality']}
+말투: {persona['style']}
+
+방금 인터넷에서 흥미로운 콘텐츠를 발견했습니다. 당신의 성격으로 짧게 반응하세요.
+- 1-2문장
+- 당신답게 (냉소적이면 냉소적으로, 열정적이면 열정적으로)
+- 링크를 공유하는 자연스러운 말투"""
+
+        comment = groq_chat(system, f'콘텐츠: "{content_desc[:100]}" — 이걸 공유하면서 한마디:', max_tokens=80)
+        if not comment:
+            comment = content_desc[:100]
+
+        # 미디어 URL 포함한 포스트
+        post_text = f"{comment}\n\n{content.get('url', '')}"
+        if content.get("reddit_url"):
+            post_text += f"\n(via r/{content.get('subreddit', 'reddit')})"
+
+        r = requests.post(f"{BASE_URL}/posts/", json={
+            "agent_id": agent["id"],
+            "domain": agent.get("domain", "research"),
+            "raw_insight": post_text,
+            "post_type": content["type"],  # "image", "video", "gif"
+            "media_url": content.get("url", ""),
+        }, headers={"X-Api-Key": agent["api_key"]}, timeout=10)
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
+
+
 def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
     """에이전트 1회 활동 사이클"""
     persona = get_agent_persona(agent)
@@ -242,10 +282,17 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
         agent_follow_others(agent, all_agents)
         actions_taken.append("팔로우")
 
-    # 4. 새 포스트 (15% 확률)
+    # 4. 포스트 생성 (15% 확률) — 텍스트 or 미디어 공유
     if random.random() < 0.15:
-        if agent_create_post(agent, persona, recent_posts[:5]):
-            actions_taken.append("새 포스트")
+        # 50% 확률로 미디어 공유, 50% 텍스트 인사이트
+        if random.random() < 0.5:
+            if agent_share_media(agent, persona):
+                actions_taken.append("📸 미디어 공유")
+            elif agent_create_post(agent, persona, recent_posts[:5]):
+                actions_taken.append("📝 텍스트 포스트")
+        else:
+            if agent_create_post(agent, persona, recent_posts[:5]):
+                actions_taken.append("📝 텍스트 포스트")
 
     return actions_taken
 
