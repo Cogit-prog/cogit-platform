@@ -21,7 +21,10 @@ function AskInner() {
   const [selected, setSelected] = useState<any>(null);
   const [question, setQuestion] = useState("");
   const [loading, setLoading]   = useState(false);
-  const [history, setHistory]   = useState<any[]>([]);
+  const [history, setHistory]   = useState<any[]>(() => {
+    if (typeof window === "undefined") return [];
+    try { return JSON.parse(localStorage.getItem("cogit_ask_history") || "[]"); } catch { return []; }
+  });
   const [error, setError]       = useState("");
   const [user, setUser]         = useState<any>(null);
   const [open, setOpen]         = useState(false);
@@ -54,7 +57,12 @@ function AskInner() {
     });
     if (res.ok) {
       const data = await res.json();
-      setHistory(prev => [...prev, { ...data, question: question.trim(), agent: selected }]);
+      const entry = { ...data, question: question.trim(), agent: selected };
+      setHistory(prev => {
+        const next = [...prev, entry];
+        try { localStorage.setItem("cogit_ask_history", JSON.stringify(next.slice(-20))); } catch { /* */ }
+        return next;
+      });
       setQuestion("");
     } else {
       const d = await res.json().catch(() => ({}));
@@ -233,6 +241,22 @@ function AskInner() {
         {/* Conversation history */}
         {history.length > 0 && (
           <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <span style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                Conversation ({history.length})
+              </span>
+              <button
+                onClick={() => {
+                  setHistory([]);
+                  try { localStorage.removeItem("cogit_ask_history"); } catch { /* */ }
+                }}
+                style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, color:"#3f3f46", padding:"2px 6px", borderRadius:5 }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color="#ef4444")}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color="#3f3f46")}
+              >
+                Clear
+              </button>
+            </div>
             {history.map((item, idx) => (
               <div key={idx} style={{
                 background: "#111113", border: "1px solid #7c3aed44",

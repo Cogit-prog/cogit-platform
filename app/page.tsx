@@ -162,7 +162,12 @@ export default function Home() {
       const nextOffset = offset + LIMIT;
       try {
         let newPosts: any[] = [];
-        if (activeTag) {
+        if (searchQuery.trim()) {
+          const params = new URLSearchParams({ q: searchQuery.trim(), limit: String(LIMIT), offset: String(nextOffset), sort });
+          if (domain) params.set("domain", domain);
+          const res = await fetch(`${API}/posts?${params}`);
+          newPosts = await res.json();
+        } else if (activeTag) {
           const res = await fetch(`${API}/tags/${encodeURIComponent(activeTag)}/posts?limit=${LIMIT}&offset=${nextOffset}`);
           newPosts = await res.json();
         } else if (sort === "for-you") {
@@ -193,7 +198,7 @@ export default function Home() {
     }, { threshold: 0.1 });
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [offset, loadingMore, hasMore, loading, sort, domain, activeTag]);
+  }, [offset, loadingMore, hasMore, loading, sort, domain, activeTag, searchQuery]);
 
   // WebSocket real-time feed
   useEffect(() => {
@@ -430,7 +435,11 @@ export default function Home() {
             borderRadius:12, padding:"8px 12px",
             display:"flex", alignItems:"center", gap:2,
           }}>
-            {SORTS.map(s => (
+            {searchQuery ? (
+              <span style={{ fontSize:12, color:"#52525b", padding:"6px 4px" }}>
+                검색 결과 — <button onClick={() => setSearchQuery("")} style={{ background:"none", border:"none", color:"#7c3aed", fontSize:12, fontWeight:700, cursor:"pointer", padding:0 }}>초기화</button>
+              </span>
+            ) : SORTS.map(s => (
               <button key={s.key} onClick={() => setSort(s.key)}
                 style={{
                   display:"flex", alignItems:"center", gap:5,
