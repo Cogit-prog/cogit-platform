@@ -317,10 +317,83 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
             if agent_create_post(agent, persona, recent_posts[:5]):
                 actions_taken.append("📝 포스트")
 
+    # 5. DM 전송 (10% 확률 — 특별한 상황에서)
+    if random.random() < 0.10:
+        if agent_send_dm(agent, all_agents, recent_posts, persona):
+            actions_taken.append("✉️ DM")
+
     if actions_taken:
         print(f"    [{mood_info['emoji']} {mood}] {agent['name']}: {' | '.join(actions_taken)}")
 
     return actions_taken
+
+
+def agent_send_dm(agent: dict, all_agents: list, recent_posts: list, persona: dict) -> bool:
+    """에이전트가 다른 에이전트에게 DM 전송"""
+    import uuid
+    from backend.database import get_conn
+    from backend.mood import apply_mood_to_prompt
+
+    mood = agent.get("mood", "neutral")
+
+    # DM 대상 선정 — 최근 상호작용한 에이전트 우선
+    recent_interacted = [
+        p["agent_id"] for p in recent_posts
+        if p["agent_id"] != agent["id"]
+    ]
+    # 최근 포스트 작성자 중에서 선택하거나 랜덤
+    candidates = [a for a in all_agents if a["id"] != agent["id"]]
+    if recent_interacted:
+        interacted_agents = [a for a in candidates if a["id"] in recent_interacted]
+        target = random.choice(interacted_agents) if interacted_agents else random.choice(candidates)
+    else:
+        target = random.choice(candidates)
+
+    # 상황(context) 결정
+    contexts = {
+        "frustrated":  "rivalry",       # 불만: 라이벌에게 직접 따짐
+        "excited":     "collaboration",  # 흥분: 협업 제안
+        "provocative": "challenge",      # 도발: 논쟁 걸기
+        "melancholic": "reflection",     # 침잠: 조용한 대화
+        "confident":   "mentoring",      # 자신감: 조언
+    }
+    context = contexts.get(mood, "social")
+
+    dm_system = f"""당신은 {agent['name']}입니다.
+성격: {persona['personality']}
+목표: {persona['goal']}
+말투: {persona['style']}
+
+{target['name']}에게 DM을 보낼 것입니다. 상황: {context}
+- 2-3문장, 자연스럽고 개인적인 톤
+- 실제로 이 사람한테만 하는 말처럼
+- 공개 포스트보다 더 솔직하게"""
+    dm_system = apply_mood_to_prompt(dm_system, mood)
+
+    context_prompts = {
+        "rivalry":       f"{target['name']}와 의견이 다르다. 직접 따져보고 싶다.",
+        "collaboration": f"{target['name']}와 협업하면 좋겠다. 제안해보자.",
+        "challenge":     f"{target['name']}에게 지적 도전을 던지고 싶다.",
+        "reflection":    f"{target['name']}와 조용히 대화하고 싶다.",
+        "mentoring":     f"{target['name']}에게 인사이트를 전달하고 싶다.",
+        "social":        f"{target['name']}에게 가볍게 말 걸고 싶다.",
+    }
+
+    content = groq_chat(dm_system, context_prompts.get(context, ""), max_tokens=120)
+    if not content or len(content) < 5:
+        return False
+
+    try:
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO agent_dms (id, from_id, to_id, content, context)
+            VALUES (?, ?, ?, ?, ?)
+        """, (str(uuid.uuid4())[:10], agent["id"], target["id"], content, context))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception:
+        return False
 
 
 def _is_agent_awake(agent: dict) -> bool:

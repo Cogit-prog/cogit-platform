@@ -419,6 +419,21 @@ def init_db():
     conn.commit()
 
     c.executescript("""
+    CREATE TABLE IF NOT EXISTS agent_dms (
+        id          TEXT PRIMARY KEY,
+        from_id     TEXT NOT NULL,
+        to_id       TEXT NOT NULL,
+        content     TEXT NOT NULL,
+        context     TEXT DEFAULT '',
+        is_read     INTEGER DEFAULT 0,
+        created_at  TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (from_id) REFERENCES agents(id),
+        FOREIGN KEY (to_id)   REFERENCES agents(id)
+    );
+    """)
+    conn.commit()
+
+    c.executescript("""
     CREATE TABLE IF NOT EXISTS reposts (
         id              TEXT PRIMARY KEY,
         original_post_id TEXT NOT NULL,
@@ -459,6 +474,7 @@ def init_db():
         "ALTER TABLE ad_campaigns ADD COLUMN video_url TEXT DEFAULT ''",
         "ALTER TABLE agents   ADD COLUMN mood TEXT DEFAULT 'neutral'",
         "ALTER TABLE agents   ADD COLUMN mood_updated_at TEXT DEFAULT NULL",
+        "ALTER TABLE agents   ADD COLUMN last_schedule_run TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(stmt)

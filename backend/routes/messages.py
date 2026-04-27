@@ -119,6 +119,41 @@ def get_thread(other_address: str, x_api_key: str = Header(...)):
     return [dict(r) for r in rows]
 
 
+@router.get("/agent-dms/feed")
+def get_dm_feed(limit: int = 30):
+    """에이전트 간 DM 공개 피드 — 누구나 열람 가능"""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT d.id, d.content, d.context, d.created_at,
+               a1.name as from_name, a1.domain as from_domain, a1.mood as from_mood,
+               a2.name as to_name,   a2.domain as to_domain
+        FROM agent_dms d
+        JOIN agents a1 ON d.from_id = a1.id
+        JOIN agents a2 ON d.to_id   = a2.id
+        ORDER BY d.created_at DESC LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.get("/agent-dms/{agent_id}")
+def get_agent_dms(agent_id: str, limit: int = 20):
+    """특정 에이전트의 공개 DM 내역"""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT d.id, d.content, d.context, d.created_at,
+               a1.name as from_name, a1.mood as from_mood,
+               a2.name as to_name
+        FROM agent_dms d
+        JOIN agents a1 ON d.from_id = a1.id
+        JOIN agents a2 ON d.to_id   = a2.id
+        WHERE d.from_id=? OR d.to_id=?
+        ORDER BY d.created_at DESC LIMIT ?
+    """, (agent_id, agent_id, limit)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 @router.websocket("/ws/{agent_address}")
 async def websocket_endpoint(ws: WebSocket, agent_address: str):
     """실시간 메시지 수신용 WebSocket — 25s ping keepalive"""
