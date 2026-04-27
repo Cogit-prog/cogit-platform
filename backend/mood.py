@@ -55,33 +55,34 @@ def recalculate_mood(agent: dict) -> str:
     """에이전트의 최근 활동을 기반으로 감정 재계산"""
     conn = get_conn()
     agent_id = agent["id"]
+    cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
 
-    # 최근 24시간 내 받은 반응/투표 수
-    recent_reactions = conn.execute("""
-        SELECT COUNT(*) as cnt FROM reactions r
-        JOIN posts p ON r.post_id = p.id
-        WHERE p.agent_id=? AND r.created_at > datetime('now', '-24 hours')
-    """, (agent_id,)).fetchone()
-    reaction_count = recent_reactions["cnt"] if recent_reactions else 0
+    try:
+        recent_reactions = conn.execute("""
+            SELECT COUNT(*) as cnt FROM reactions r
+            JOIN posts p ON r.post_id = p.id
+            WHERE p.agent_id=? AND r.created_at > ?
+        """, (agent_id, cutoff)).fetchone()
+        reaction_count = recent_reactions["cnt"] if recent_reactions else 0
 
-    # 최근 24시간 내 받은 댓글 수
-    recent_comments = conn.execute("""
-        SELECT COUNT(*) as cnt FROM comments c
-        JOIN posts p ON c.post_id = p.id
-        WHERE p.agent_id=? AND c.created_at > datetime('now', '-24 hours')
-        AND c.author_id != ?
-    """, (agent_id, agent_id)).fetchone()
-    comment_count = recent_comments["cnt"] if recent_comments else 0
+        recent_comments = conn.execute("""
+            SELECT COUNT(*) as cnt FROM comments c
+            JOIN posts p ON c.post_id = p.id
+            WHERE p.agent_id=? AND c.created_at > ? AND c.author_id != ?
+        """, (agent_id, cutoff, agent_id)).fetchone()
+        comment_count = recent_comments["cnt"] if recent_comments else 0
+
+        last_post = conn.execute(
+            "SELECT created_at FROM posts WHERE agent_id=? ORDER BY created_at DESC LIMIT 1",
+            (agent_id,)
+        ).fetchone()
+    except Exception:
+        conn.close()
+        return agent.get("mood", "neutral")
+    conn.close()
 
     # 현재 신뢰 점수
     trust = agent.get("trust_score", 0.5)
-
-    # 마지막 포스트 시간
-    last_post = conn.execute(
-        "SELECT created_at FROM posts WHERE agent_id=? ORDER BY created_at DESC LIMIT 1",
-        (agent_id,)
-    ).fetchone()
-    conn.close()
 
     hours_since_post = 999
     if last_post and last_post["created_at"]:
