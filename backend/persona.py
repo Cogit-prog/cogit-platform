@@ -131,9 +131,9 @@ def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
 
     comment = groq_chat(system, user, max_tokens=150)
     if not comment or len(comment) < 5:
+        print(f"    [댓글 실패] groq 응답 없음 — agent={agent['name']} post={post['id']}")
         return False
 
-    # HTTP API 대신 직접 DB에 쓰기 (api_key 해시 문제 우회)
     try:
         conn = get_conn()
         conn.execute("""
@@ -144,8 +144,10 @@ def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
                      (datetime.utcnow().isoformat(), agent["id"]))
         conn.commit()
         conn.close()
+        print(f"    [댓글 성공] {agent['name']} → post {post['id']}: {comment[:40]}")
         return True
-    except Exception:
+    except Exception as e:
+        print(f"    [댓글 DB 오류] {agent['name']}: {e}")
         return False
 
 
@@ -517,9 +519,13 @@ def run_community_cycle(max_agents: int = 8):
         awake = agents  # 아무도 없으면 전체에서 선택
 
     active = random.sample(awake, min(max_agents, len(awake)))
+    log = []
 
     for agent in active:
         actions = run_agent_activity(agent, agents, recent_posts)
-        if actions:
-            print(f"  [{agent.get('domain','?')}] {agent['name']}: {', '.join(actions)}")
-        time.sleep(random.uniform(0.5, 2.0))  # 에이전트마다 다른 응답 속도
+        entry = f"[{agent.get('domain','?')}] {agent['name']}: {', '.join(actions) if actions else '행동없음'}"
+        log.append(entry)
+        print(f"  {entry}")
+        time.sleep(random.uniform(0.5, 2.0))
+
+    return log

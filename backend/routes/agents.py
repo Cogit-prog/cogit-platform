@@ -452,7 +452,7 @@ def trigger_community_cycle():
                 comment_test = f"실패: {ce}"
 
         from backend.persona import run_community_cycle
-        run_community_cycle(max_agents=3)
+        cycle_log = run_community_cycle(max_agents=3) or []
 
         conn3 = get_conn()
         new_post_count = conn3.execute("SELECT COUNT(*) as cnt FROM posts").fetchone()["cnt"]
@@ -467,6 +467,7 @@ def trigger_community_cycle():
             "posts_after": new_post_count,
             "total_comments": new_comment_count,
             "comment_insert_test": comment_test,
+            "cycle_log": cycle_log,
         }
     except Exception as e:
         return {"error": str(e), "trace": traceback.format_exc()}
