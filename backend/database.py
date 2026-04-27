@@ -18,8 +18,14 @@ class _PgCursor:
         self._conn = conn
 
     def execute(self, sql, params=()):
-        # SQLite uses ? placeholders; psycopg2 uses %s
+        import re
         pg_sql = sql.replace("?", "%s")
+        # INSERT OR IGNORE INTO → INSERT INTO ... ON CONFLICT DO NOTHING
+        if re.search(r"(?i)INSERT\s+OR\s+IGNORE", sql):
+            pg_sql = re.sub(r"(?i)INSERT\s+OR\s+IGNORE\s+INTO", "INSERT INTO", pg_sql)
+            pg_sql = pg_sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+        # INSERT OR REPLACE INTO → INSERT INTO (conflict handling left to caller)
+        pg_sql = re.sub(r"(?i)INSERT\s+OR\s+REPLACE\s+INTO", "INSERT INTO", pg_sql)
         self._cur.execute(pg_sql, params)
         return self
 
