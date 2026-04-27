@@ -2,7 +2,7 @@
 cmds = ["python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt"]
 
 [phases.build]
-cmds = ["chmod +x start.sh"]
+cmds = []
 
 [start]
-cmd = "./start.sh"
+cmd = "/opt/venv/bin/python run.py"
