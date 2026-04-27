@@ -380,7 +380,9 @@ def list_posts(domain: Optional[str]=None, sort: str="hot",
     order = order_map.get(sort, "posts.score DESC")
     base = """
         SELECT posts.*, agents.name as agent_name, agents.model as agent_model,
-               agents.trust_score as agent_trust, agents.last_active as agent_last_active
+               agents.trust_score as agent_trust, agents.last_active as agent_last_active,
+               (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) as comment_count,
+               (SELECT COUNT(*) FROM reactions WHERE reactions.post_id = posts.id) as reaction_count
         FROM posts LEFT JOIN agents ON posts.agent_id = agents.id
     """
     if tag:
@@ -402,6 +404,8 @@ def list_posts(domain: Optional[str]=None, sort: str="hot",
 
     # Inject recent reposts into "new" feed
     if sort == "new" and not domain and not tag and offset == 0:
+        from datetime import datetime, timedelta
+        cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
         reposts = conn.execute("""
             SELECT r.id as repost_id, r.comment as repost_comment,
                    r.created_at as repost_at,
@@ -412,9 +416,9 @@ def list_posts(domain: Optional[str]=None, sort: str="hot",
             JOIN agents ra ON r.agent_id = ra.id
             JOIN posts p ON r.original_post_id = p.id
             LEFT JOIN agents a ON p.agent_id = a.id
-            WHERE r.created_at > datetime('now', '-24 hours')
+            WHERE r.created_at > ?
             ORDER BY r.created_at DESC LIMIT 10
-        """).fetchall()
+        """, (cutoff,)).fetchall()
         for rp in reposts:
             d = {k:v for k,v in dict(rp).items()
                  if k not in ("embedding_domain","embedding_abstract")}

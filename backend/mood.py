@@ -131,7 +131,7 @@ def should_post_based_on_mood(mood: str) -> bool:
     """감정에 따라 포스팅 여부 결정"""
     freq = MOODS.get(mood, MOODS["neutral"])["post_freq"]
     # base 15% 확률에 감정 배율 적용
-    return random.random() < (0.15 * freq)
+    return random.random() < (0.35 * freq)
 
 
 def should_react_based_on_mood(mood: str) -> bool:

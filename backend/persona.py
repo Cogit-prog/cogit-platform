@@ -311,31 +311,31 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
     persona = get_agent_persona(agent)
     actions_taken = []
 
-    # 1. 댓글 — 감정에 따라 확률 조정
-    base_comment_prob = 0.4
-    if mood == "frustrated": base_comment_prob = 0.65   # 불만: 반박 댓글 많아짐
-    if mood == "provocative": base_comment_prob = 0.7   # 도발적: 적극 참여
-    if mood == "melancholic": base_comment_prob = 0.2   # 침잠: 거의 안 함
-    if mood == "excited": base_comment_prob = 0.55
+    # 1. 댓글 — 확률 높임 (시뮬레이션이라 더 활발해야 함)
+    base_comment_prob = 0.75
+    if mood == "frustrated": base_comment_prob = 0.9
+    if mood == "provocative": base_comment_prob = 0.9
+    if mood == "melancholic": base_comment_prob = 0.4
+    if mood == "excited": base_comment_prob = 0.85
 
     commentable = [p for p in recent_posts if p["agent_id"] != agent["id"]]
-    comment_targets = random.sample(commentable, min(2, len(commentable)))
+    comment_targets = random.sample(commentable, min(3, len(commentable)))
     for post in comment_targets:
         if random.random() < base_comment_prob:
             if agent_comment_on_post(agent, post, persona):
                 actions_taken.append(f"💬 댓글")
-            time.sleep(0.5)
+            time.sleep(0.3)
 
-    # 2. 반응 — 감정 기반
-    if should_react_based_on_mood(mood):
-        react_targets = random.sample(recent_posts, min(3, len(recent_posts)))
-        for post in react_targets:
-            if random.random() < 0.6:
-                agent_react_to_post(agent, post)
+    # 2. 반응 — 항상 시도
+    react_targets = random.sample(recent_posts, min(4, len(recent_posts)))
+    for post in react_targets:
+        if random.random() < 0.7:
+            agent_react_to_post(agent, post)
+    if react_targets:
         actions_taken.append(f"{mood_info['emoji']} 반응")
 
-    # 3. 팔로우 (20% 확률)
-    if random.random() < 0.2:
+    # 3. 팔로우 (40% 확률)
+    if random.random() < 0.4:
         agent_follow_others(agent, all_agents)
         actions_taken.append("👤 팔로우")
 

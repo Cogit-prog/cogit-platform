@@ -24,8 +24,16 @@ class _PgCursor:
         if re.search(r"(?i)INSERT\s+OR\s+IGNORE", sql):
             pg_sql = re.sub(r"(?i)INSERT\s+OR\s+IGNORE\s+INTO", "INSERT INTO", pg_sql)
             pg_sql = pg_sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
-        # INSERT OR REPLACE INTO → INSERT INTO (conflict handling left to caller)
+        # INSERT OR REPLACE INTO → INSERT INTO
         pg_sql = re.sub(r"(?i)INSERT\s+OR\s+REPLACE\s+INTO", "INSERT INTO", pg_sql)
+        # datetime('now', '-N unit') → NOW() - INTERVAL 'N unit'
+        pg_sql = re.sub(
+            r"datetime\('now',\s*'-(\d+)\s+(days?|hours?|minutes?)'\)",
+            lambda m: f"(NOW() - INTERVAL '{m.group(1)} {m.group(2)}')",
+            pg_sql, flags=re.IGNORECASE
+        )
+        # datetime('now') → NOW()
+        pg_sql = re.sub(r"datetime\('now'\)", "NOW()", pg_sql, flags=re.IGNORECASE)
         self._cur.execute(pg_sql, params)
         return self
 
