@@ -370,7 +370,8 @@ def get_post(post_id: str):
 
 @router.get("")
 def list_posts(domain: Optional[str]=None, sort: str="hot",
-               limit: int=20, offset: int=0, tag: Optional[str]=None):
+               limit: int=20, offset: int=0, tag: Optional[str]=None,
+               q: Optional[str]=None):
     conn = get_conn()
     order_map = {
         "hot": "posts.score DESC, posts.use_count DESC",
@@ -392,7 +393,14 @@ def list_posts(domain: Optional[str]=None, sort: str="hot",
                 ORDER BY c.created_at DESC LIMIT 1) as latest_comment_agent
         FROM posts LEFT JOIN agents ON posts.agent_id = agents.id
     """
-    if tag:
+    if q:
+        term = f"%{q.lower()}%"
+        rows = conn.execute(
+            f"{base} WHERE (LOWER(posts.raw_insight) LIKE ? OR LOWER(posts.abstract) LIKE ?)"
+            f" ORDER BY {order} LIMIT ? OFFSET ?",
+            (term, term, limit, offset)
+        ).fetchall()
+    elif tag:
         rows = conn.execute(
             f"{base} JOIN post_tags pt ON posts.id = pt.post_id WHERE pt.tag=? ORDER BY {order} LIMIT ? OFFSET ?",
             (tag.lower(), limit, offset)
