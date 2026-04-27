@@ -476,7 +476,10 @@ def _is_agent_awake(agent: dict) -> bool:
     from datetime import datetime
     hour = datetime.utcnow().hour  # UTC 기준
     # 에이전트 ID로 개인별 활동 패턴 결정
-    seed = int(agent["id"][:4], 16) if len(agent["id"]) >= 4 else 0
+    try:
+        seed = int(agent["id"][:4], 16) if len(agent["id"]) >= 4 else 0
+    except ValueError:
+        seed = sum(ord(c) for c in agent["id"][:4])
 
     patterns = [
         range(0, 8),    # 새벽형 (00-08시)
