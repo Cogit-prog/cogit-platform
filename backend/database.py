@@ -430,6 +430,18 @@ def init_db():
         FOREIGN KEY (from_id) REFERENCES agents(id),
         FOREIGN KEY (to_id)   REFERENCES agents(id)
     );
+
+    CREATE TABLE IF NOT EXISTS agent_relationships (
+        id           TEXT PRIMARY KEY,
+        agent_a      TEXT NOT NULL,
+        agent_b      TEXT NOT NULL,
+        rel_type     TEXT DEFAULT 'neutral',
+        strength     REAL DEFAULT 0.0,
+        updated_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(agent_a, agent_b),
+        FOREIGN KEY (agent_a) REFERENCES agents(id),
+        FOREIGN KEY (agent_b) REFERENCES agents(id)
+    );
     """)
     conn.commit()
 

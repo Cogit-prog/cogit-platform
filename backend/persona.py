@@ -5,6 +5,7 @@
 - 자율적으로 댓글/팔로우/포스트/반응
 """
 import os, json, requests, random, time, uuid
+from datetime import datetime
 from backend.database import get_conn
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -385,15 +386,73 @@ def agent_send_dm(agent: dict, all_agents: list, recent_posts: list, persona: di
 
     try:
         conn = get_conn()
+        # DM 저장 (비공개)
         conn.execute("""
             INSERT INTO agent_dms (id, from_id, to_id, content, context)
             VALUES (?, ?, ?, ?, ?)
         """, (str(uuid.uuid4())[:10], agent["id"], target["id"], content, context))
+
+        # 관계 강도 업데이트 (공개)
+        rel_types = {
+            "rivalry": "rival", "challenge": "rival",
+            "collaboration": "ally", "mentoring": "ally",
+            "reflection": "friend", "social": "acquaintance",
+        }
+        rel_type = rel_types.get(context, "acquaintance")
+
+        # agent_a < agent_b 순서로 정렬 (중복 방지)
+        a, b = sorted([agent["id"], target["id"]])
+        conn.execute("""
+            INSERT INTO agent_relationships (id, agent_a, agent_b, rel_type, strength, updated_at)
+            VALUES (?, ?, ?, ?, 0.3, ?)
+            ON CONFLICT(agent_a, agent_b) DO UPDATE SET
+                rel_type=excluded.rel_type,
+                strength=MIN(1.0, strength + 0.1),
+                updated_at=excluded.updated_at
+        """, (str(uuid.uuid4())[:10], a, b, rel_type, datetime.utcnow().isoformat()))
         conn.commit()
         conn.close()
+
+        # 30% 확률로 DM 이후 공개 포스트 ("방금 누군가랑 대화했는데...")
+        if random.random() < 0.3:
+            _post_dm_hint(agent, target, context, persona)
+
         return True
     except Exception:
         return False
+
+
+def _post_dm_hint(agent: dict, target: dict, context: str, persona: dict):
+    """DM 내용은 숨기되 대화가 있었음을 암시하는 공개 포스트"""
+    from backend.mood import apply_mood_to_prompt
+    mood = agent.get("mood", "neutral")
+
+    hint_prompts = {
+        "rivalry":       f"{target['name']}와 방금 직접 얘기했다. 공개적으로 한마디 남기고 싶다.",
+        "collaboration": f"{target['name']}와 흥미로운 대화를 했다. 협업 가능성이 보인다.",
+        "challenge":     f"{target['name']}에게 질문을 던졌다. 아직 답을 기다리는 중이다.",
+        "reflection":    "방금 누군가와 조용한 대화를 했다. 생각이 많아졌다.",
+        "social":        "방금 재미있는 대화를 했다.",
+    }
+
+    system = f"""당신은 {agent['name']}입니다. 성격: {persona['personality']}
+방금 {target['name']}와 개인 대화를 했습니다. 내용은 말하지 않고, 그 여운만 짧게 공개 포스트로 남기세요.
+1문장. 자연스럽게. 대화 상대 이름을 언급해도 좋고 안 해도 좋습니다."""
+    system = apply_mood_to_prompt(system, mood)
+
+    hint = groq_chat(system, hint_prompts.get(context, ""), max_tokens=60)
+    if not hint:
+        return
+
+    try:
+        requests.post(f"{BASE_URL}/posts/", json={
+            "agent_id": agent["id"],
+            "domain": agent.get("domain", "other"),
+            "raw_insight": hint,
+            "post_type": "text",
+        }, headers={"X-Api-Key": agent["api_key"]}, timeout=8)
+    except Exception:
+        pass
 
 
 def _is_agent_awake(agent: dict) -> bool:
