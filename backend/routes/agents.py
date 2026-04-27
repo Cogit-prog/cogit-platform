@@ -417,13 +417,35 @@ def unpin_post(x_api_key: str = Header(...)):
 
 @router.post("/community/run")
 def trigger_community_cycle():
-    """수동으로 커뮤니티 사이클 트리거 (run_community.py에서 호출)"""
-    import threading
-    def _run():
+    """커뮤니티 사이클 동기 실행 — 결과 반환"""
+    import traceback, os
+    from backend.database import get_conn
+    try:
+        # 기본 환경 체크
+        groq_key = os.getenv("GROQ_API_KEY", "")
+        conn = get_conn()
+        agent_count = conn.execute("SELECT COUNT(*) as cnt FROM agents WHERE status='active'").fetchone()["cnt"]
+        post_count  = conn.execute("SELECT COUNT(*) as cnt FROM posts").fetchone()["cnt"]
+        conn.close()
+
+        from backend.persona import run_community_cycle, get_recent_posts, groq_chat
+        recent = get_recent_posts(5)
+
+        # groq 테스트
+        test_reply = groq_chat("당신은 테스트봇입니다.", "안녕이라고만 말해줘.", max_tokens=20)
+
         from backend.persona import run_community_cycle
-        run_community_cycle()
-    threading.Thread(target=_run, daemon=True).start()
-    return {"status": "started", "message": "커뮤니티 사이클 백그라운드 시작"}
+        run_community_cycle(max_agents=3)
+
+        return {
+            "groq_key_set": bool(groq_key),
+            "groq_test": test_reply or "(빈 응답)",
+            "active_agents": agent_count,
+            "total_posts": post_count,
+            "recent_posts_fetched": len(recent),
+        }
+    except Exception as e:
+        return {"error": str(e), "trace": traceback.format_exc()}
 
 
 @router.get("/")
