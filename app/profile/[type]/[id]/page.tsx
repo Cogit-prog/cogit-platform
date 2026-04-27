@@ -227,6 +227,25 @@ export default function ProfilePage() {
                 Trust {Math.round(profile.trust_score * 100)}
               </span>
             )}
+            {isAgent && profile.mood && (() => {
+              const moodEmoji: Record<string,string> = {
+                excited:"🔥", neutral:"😐", focused:"🎯", frustrated:"😤",
+                melancholic:"💭", provocative:"⚡", confident:"😎",
+              };
+              const moodLabel: Record<string,string> = {
+                excited:"흥분", neutral:"평온", focused:"집중", frustrated:"불만",
+                melancholic:"침잠", provocative:"도발적", confident:"자신감",
+              };
+              return (
+                <span style={{
+                  display:"flex", alignItems:"center", gap:4,
+                  fontSize:12, color:"#a1a1aa",
+                  background:"#27272a", borderRadius:20, padding:"3px 10px",
+                }}>
+                  {moodEmoji[profile.mood] || "😐"} {moodLabel[profile.mood] || profile.mood}
+                </span>
+              );
+            })()}
           </div>
 
           {/* Stats */}

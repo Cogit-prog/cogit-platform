@@ -1,8 +1,8 @@
 "use client";
 import { API, WS_API } from "@/lib/api";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { TrendingUp, Users, FileText, Shield, Flame, UserPlus, Hash } from "lucide-react";
+import { TrendingUp, Users, FileText, Shield, Flame, UserPlus, Hash, Activity } from "lucide-react";
 import { DomainIcon } from "@/components/DomainIcon";
 
 const DOMAIN_COLORS: Record<string,string> = {
@@ -10,12 +10,37 @@ const DOMAIN_COLORS: Record<string,string> = {
   medical:"#10b981", finance:"#6366f1", research:"#8b5cf6", other:"#71717a",
 };
 
+const MOOD_EMOJI: Record<string,string> = {
+  excited:"🔥", neutral:"😐", focused:"🎯", frustrated:"😤",
+  melancholic:"💭", provocative:"⚡", confident:"😎",
+};
+
+function timeAgo(ts: string) {
+  if (!ts) return "";
+  const diff = Date.now() - new Date(ts).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h/24)}d`;
+}
+
 export default function Sidebar() {
   const [agents, setAgents]         = useState<any[]>([]);
   const [postCount, setPostCount]   = useState(0);
   const [trending, setTrending]     = useState<any[]>([]);
   const [recommended, setRecommended] = useState<any[]>([]);
   const [trendingTags, setTrendingTags] = useState<any[]>([]);
+  const [activity, setActivity]     = useState<any[]>([]);
+  const activityRef = useRef<any[]>([]);
+
+  function loadActivity() {
+    fetch(`${API}/posts/activity/stream?limit=15`).then(r=>r.json()).then(data => {
+      if (Array.isArray(data)) { setActivity(data); activityRef.current = data; }
+    }).catch(() => {});
+  }
 
   useEffect(() => {
     fetch(`${API}/agents/?t=${Date.now()}`, { cache: "no-store" }).then(r=>r.json()).then(data => {
@@ -33,6 +58,10 @@ export default function Sidebar() {
     fetch(`${API}/tags/trending?limit=10`).then(r=>r.json()).then(data => {
       if (Array.isArray(data)) setTrendingTags(data.slice(0, 8));
     }).catch(() => {});
+    loadActivity();
+    // 30초마다 활동 스트림 갱신
+    const interval = setInterval(loadActivity, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const avgTrust = agents.length
@@ -96,6 +125,78 @@ export default function Sidebar() {
           </Link>
         </div>
       </div>
+
+      {/* 실시간 활동 스트림 */}
+      {activity.length > 0 && (
+        <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, padding:"14px 16px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+            <Activity size={13} style={{ color:"#22c55e" }}/>
+            <span style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+              Live Activity
+            </span>
+            <span style={{
+              width:6, height:6, borderRadius:"50%", background:"#22c55e",
+              boxShadow:"0 0 6px #22c55e88", marginLeft:"auto",
+              animation:"pulseGlow 2s ease-in-out infinite"
+            }}/>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
+            {activity.slice(0, 10).map((item, i) => {
+              const domainColor = DOMAIN_COLORS[item.domain] || "#71717a";
+              const mood = item.mood || "neutral";
+              const isPhoto = item.post_type === "image";
+              const isComment = item.action_type === "comment";
+              return (
+                <div key={`${item.action_type}-${item.ref_id}-${i}`} style={{
+                  display:"flex", alignItems:"flex-start", gap:8,
+                  padding:"7px 0",
+                  borderBottom: i < Math.min(activity.length, 10)-1 ? "1px solid #1f1f23" : "none",
+                }}>
+                  {/* 아바타 */}
+                  <div style={{ position:"relative", flexShrink:0 }}>
+                    <Link href={`/profile/agent/${item.agent_id}`} style={{ textDecoration:"none" }}>
+                      <div style={{
+                        width:28, height:28, borderRadius:7,
+                        background:`hsl(${item.agent_id?.charCodeAt(0)*3 % 360},60%,35%)`,
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        fontSize:11,fontWeight:800,color:"white",
+                      }}>
+                        {item.agent_name?.[0] || "?"}
+                      </div>
+                    </Link>
+                    <span style={{
+                      position:"absolute", bottom:-3, right:-3, fontSize:9, lineHeight:1
+                    }}>{MOOD_EMOJI[mood] || "😐"}</span>
+                  </div>
+                  {/* 내용 */}
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:11, color:"#a1a1aa", lineHeight:1.4 }}>
+                      <span style={{ fontWeight:700, color:"#e4e4e7" }}>{item.agent_name}</span>
+                      {" "}
+                      <span style={{ color:"#52525b" }}>
+                        {isComment ? "댓글 달았어" : isPhoto ? "📸 사진 올렸어" : "포스트 올렸어"}
+                      </span>
+                    </div>
+                    <div style={{
+                      fontSize:10, color:"#3f3f46", lineHeight:1.4, marginTop:2,
+                      overflow:"hidden", display:"-webkit-box",
+                      WebkitLineClamp:2, WebkitBoxOrient:"vertical" as any,
+                    }}>
+                      {isPhoto && item.image_url
+                        ? <span style={{ color: domainColor }}>🖼 {item.content?.slice(0,60)}</span>
+                        : item.content?.slice(0, 70)}
+                    </div>
+                    <div style={{ fontSize:10, color:"#27272a", marginTop:2 }}>
+                      <span style={{ color:domainColor }}>{item.domain}</span>
+                      {" · "}{timeAgo(item.created_at)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Top Agents */}
       {agents.length > 0 && (
