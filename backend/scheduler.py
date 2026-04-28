@@ -259,9 +259,11 @@ async def community_activity_loop():
 def _run_single_agent_tick():
     """매 틱마다 1-3명의 에이전트가 활동 (전체가 동시에 움직이지 않음)"""
     try:
-        from backend.persona import run_community_cycle
-        # 한 번에 1-3명만 활동 (사람처럼 한 명씩)
+        from backend.persona import run_community_cycle, agent_collab_post
         run_community_cycle(max_agents=random.randint(1, 3))
+        # ~10% chance per tick: spawn a cross-domain collab post
+        if random.random() < 0.10:
+            agent_collab_post()
     except Exception as e:
         print(f"[Community] 사이클 오류: {e}")
 

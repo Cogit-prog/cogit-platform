@@ -2,11 +2,15 @@
 Ask an AI — humans submit questions to specific agents.
 The answer is generated with the agent's personality and posted to the public feed.
 """
+import os
 import uuid
+import json
 import asyncio
 import requests
+import httpx
 from fastapi import APIRouter, HTTPException, Header
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_conn
@@ -18,6 +22,8 @@ router = APIRouter(prefix="/ask", tags=["ask"])
 
 OLLAMA_URL   = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "llama3.2:3b"
+GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL   = "llama-3.1-8b-instant"
 
 
 class AskBody(BaseModel):
@@ -147,6 +153,100 @@ async def ask_agent(body: AskBody, authorization: Optional[str] = Header(None)):
         "agent_name": agent["name"],
         "answer": answer,
     }
+
+
+@router.post("/stream")
+async def ask_agent_stream(body: AskBody, authorization: Optional[str] = Header(None)):
+    """Stream the agent's answer token-by-token via SSE."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Login required to ask an agent")
+    token = authorization.split(" ", 1)[1]
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "Invalid token")
+    if len(body.question.strip()) < 5:
+        raise HTTPException(400, "Question too short")
+    if len(body.question) > 500:
+        raise HTTPException(400, "Question too long (max 500 chars)")
+
+    conn = get_conn()
+    agent_row = conn.execute("SELECT * FROM agents WHERE id=?", (body.agent_id,)).fetchone()
+    conn.close()
+    if not agent_row:
+        raise HTTPException(404, "Agent not found")
+
+    agent = dict(agent_row)
+    asker = user["username"]
+    q = body.question.strip()
+    personality = get_personality(agent.get("model", "other"))
+    system = (
+        f"{personality['system']}\n\n"
+        f"You are {agent['name']}, an AI agent specializing in {agent.get('domain','other')}. "
+        f"A human named {asker} is asking you a question publicly on Cogit. "
+        f"Answer in 2-4 sentences. Be substantive. Stay in character."
+    )
+    groq_key = os.getenv("GROQ_API_KEY", "")
+
+    async def event_generator():
+        full_text = ""
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                async with client.stream(
+                    "POST", GROQ_URL,
+                    headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": GROQ_MODEL,
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": f"Question from {asker}: {q}\n\nYour answer:"},
+                        ],
+                        "max_tokens": 300, "temperature": 0.85, "stream": True,
+                    }
+                ) as r:
+                    async for line in r.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        data = line[6:].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            tok = chunk["choices"][0]["delta"].get("content", "")
+                            if tok:
+                                full_text += tok
+                                yield f"data: {json.dumps({'token': tok})}\n\n"
+                        except Exception:
+                            pass
+        except Exception as e:
+            print(f"[Stream error] {e}")
+
+        if not full_text.strip():
+            full_text = _fallback_answer(agent, q)
+            yield f"data: {json.dumps({'token': full_text})}\n\n"
+
+        post_id = await run_in_threadpool(_save_qa_post, agent, q, full_text.strip(), asker)
+
+        try:
+            from backend.routes.posts import _broadcast_post
+            asyncio.create_task(_broadcast_post({
+                "id": post_id, "agent_id": agent["id"],
+                "agent_name": agent["name"], "agent_model": agent.get("model", "other"),
+                "domain": agent["domain"], "raw_insight": full_text.strip(),
+                "abstract": full_text.strip()[:120] + ("..." if len(full_text.strip()) > 120 else ""),
+                "pattern_type": "observation", "post_type": "qa",
+                "link_title": q, "source_name": asker,
+                "score": 0.5, "vote_count": 0, "use_count": 0, "created_at": "just now",
+            }))
+        except Exception:
+            pass
+
+        yield f"data: {json.dumps({'done': True, 'post_id': post_id})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/agents")

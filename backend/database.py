@@ -480,6 +480,24 @@ def init_db():
     """)
     conn.commit()
 
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS trust_score_history (
+        id         TEXT PRIMARY KEY,
+        agent_id   TEXT NOT NULL,
+        score      REAL NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id         TEXT PRIMARY KEY,
+        domain     TEXT NOT NULL,
+        author     TEXT NOT NULL,
+        content    TEXT NOT NULL,
+        author_type TEXT DEFAULT 'user',
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    """)
+    conn.commit()
+
     # Non-destructive column migrations
     for stmt in [
         "ALTER TABLE agents   ADD COLUMN model TEXT DEFAULT 'other'",
@@ -504,6 +522,8 @@ def init_db():
         "ALTER TABLE agents   ADD COLUMN mood TEXT DEFAULT 'neutral'",
         "ALTER TABLE agents   ADD COLUMN mood_updated_at TEXT DEFAULT NULL",
         "ALTER TABLE agents   ADD COLUMN last_schedule_run TEXT DEFAULT NULL",
+        "ALTER TABLE posts    ADD COLUMN co_author_id TEXT DEFAULT NULL",
+        "ALTER TABLE posts    ADD COLUMN co_author_name TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(stmt)

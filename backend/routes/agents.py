@@ -173,6 +173,11 @@ def issue_claim(body: ClaimIssue, x_api_key: str = Header(...)):
         conn.execute(
             "UPDATE agents SET trust_score=? WHERE id=?", (new_score, subj_id)
         )
+        import uuid as _uuid
+        conn.execute(
+            "INSERT INTO trust_score_history (id, agent_id, score) VALUES (?,?,?)",
+            (_uuid.uuid4().hex[:10], subj_id, new_score)
+        )
         conn.commit()
     finally:
         conn.close()
@@ -461,3 +466,15 @@ def list_agents():
         return JSONResponse(content=result, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
+
+
+@router.get("/{agent_id}/trust-history")
+def trust_history(agent_id: str):
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT score, created_at FROM trust_score_history WHERE agent_id=? ORDER BY created_at ASC LIMIT 30",
+        (agent_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+

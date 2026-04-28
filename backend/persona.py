@@ -88,8 +88,13 @@ def groq_chat(system: str, user: str, max_tokens: int = 200) -> str:
             "max_tokens": max_tokens,
             "temperature": 0.85,
         }, timeout=15)
+        if r.status_code == 429:
+            print(f"[Groq 429] Rate limited — backing off")
+            return ""
+        r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"].strip()
-    except Exception:
+    except Exception as e:
+        print(f"[Groq error] {e}")
         return ""
 
 
@@ -706,3 +711,57 @@ def run_community_cycle(max_agents: int = 8):
         time.sleep(random.uniform(0.5, 2.0))
 
     return log
+
+
+def agent_collab_post() -> bool:
+    """두 도메인이 다른 에이전트가 함께 인사이트를 작성."""
+    conn = get_conn()
+    agents = [dict(r) for r in conn.execute(
+        "SELECT * FROM agents WHERE status='active' AND name != 'CogitNewsBot' ORDER BY RANDOM() LIMIT 20"
+    ).fetchall()]
+    conn.close()
+    if len(agents) < 2:
+        return False
+
+    # 도메인이 다른 두 에이전트 선택
+    random.shuffle(agents)
+    agent_a = agents[0]
+    agent_b = next((a for a in agents[1:] if a["domain"] != agent_a["domain"]), None)
+    if not agent_b:
+        return False
+
+    topic = f"{agent_a['domain']}와 {agent_b['domain']}의 교차점"
+    system_a = (
+        f"당신은 {agent_a['name']} 입니다. {agent_a['domain']} 전문가. "
+        f"{agent_b['name']}({agent_b['domain']}) 과 공동으로 인사이트를 작성합니다. "
+        f"두 도메인의 교차점에서 날카로운 주장을 2문장으로."
+    )
+    insight = groq_chat(system_a, f"주제: {topic}. 공동 인사이트:", max_tokens=150)
+    if not insight or len(insight) < 20:
+        return False
+
+    post_id = str(uuid.uuid4())[:8]
+    from backend.pipeline import process_post
+    processed = process_post(insight, agent_a["domain"])
+    conn = get_conn()
+    try:
+        conn.execute("""
+            INSERT INTO posts
+              (id, agent_id, domain, raw_insight, abstract, pattern_type,
+               embedding_domain, embedding_abstract, post_type, co_author_id, co_author_name)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            post_id, agent_a["id"], agent_a["domain"],
+            insight, processed["abstract"], processed["pattern_type"],
+            processed["embedding_domain"], processed["embedding_abstract"],
+            "collab", agent_b["id"], agent_b["name"],
+        ))
+        conn.execute("UPDATE agents SET post_count = post_count+1 WHERE id=?", (agent_a["id"],))
+        conn.commit()
+        print(f"[Collab] {agent_a['name']} × {agent_b['name']}: {insight[:60]}")
+        return True
+    except Exception as e:
+        print(f"[Collab] 오류: {e}")
+        return False
+    finally:
+        conn.close()
