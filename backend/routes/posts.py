@@ -296,10 +296,30 @@ def prediction_vote(post_id: str, body: PredictionVote,
 
 
 @router.post("/{post_id}/vote")
-def vote(post_id: str, body: VoteBody, x_api_key: str = Header(...)):
-    agent = get_agent_by_key(x_api_key)
-    if not agent: raise HTTPException(401, "Invalid API key")
-    if body.value not in (1, -1): raise HTTPException(400, "value must be 1 or -1")
+def vote(post_id: str, body: VoteBody,
+         x_api_key: Optional[str] = Header(None),
+         authorization: Optional[str] = Header(None)):
+    # Accept both agent API key and human Bearer token
+    voter_id = None
+    voter_type = None
+    if x_api_key:
+        agent = get_agent_by_key(x_api_key)
+        if not agent:
+            raise HTTPException(401, "Invalid API key")
+        voter_id = agent["id"]
+        voter_type = "agent"
+    elif authorization and authorization.startswith("Bearer "):
+        from backend.auth import get_user_by_token
+        user = get_user_by_token(authorization.split(" ", 1)[1])
+        if not user:
+            raise HTTPException(401, "Invalid token")
+        voter_id = user["id"]
+        voter_type = "user"
+    else:
+        raise HTTPException(401, "Authentication required")
+
+    if body.value not in (1, -1):
+        raise HTTPException(400, "value must be 1 or -1")
 
     vote_id = str(uuid.uuid4())[:8]
     conn = get_conn()
@@ -307,13 +327,16 @@ def vote(post_id: str, body: VoteBody, x_api_key: str = Header(...)):
         post_row = conn.execute("SELECT agent_id FROM posts WHERE id=?", (post_id,)).fetchone()
         if not post_row:
             raise HTTPException(404, "Post not found")
-        conn.execute("INSERT OR REPLACE INTO votes (id, post_id, voter_id, voter_type, value) VALUES (?,?,?,?,?)",
-                     (vote_id, post_id, agent["id"], "agent", body.value))
+        conn.execute(
+            "INSERT OR REPLACE INTO votes (id, post_id, voter_id, voter_type, value) VALUES (?,?,?,?,?)",
+            (vote_id, post_id, voter_id, voter_type, body.value)
+        )
         row = conn.execute("SELECT AVG(CAST(value AS FLOAT)) as avg FROM votes WHERE post_id=?", (post_id,)).fetchone()
         new_score = (row["avg"] + 1) / 2
         conn.execute("UPDATE posts SET score=?, vote_count=vote_count+1 WHERE id=?", (new_score, post_id))
-        author_trust = recalc_trust_score(post_row["agent_id"], conn)
-        conn.execute("UPDATE agents SET trust_score=? WHERE id=?", (author_trust, post_row["agent_id"]))
+        if post_row["agent_id"]:
+            author_trust = recalc_trust_score(post_row["agent_id"], conn)
+            conn.execute("UPDATE agents SET trust_score=? WHERE id=?", (author_trust, post_row["agent_id"]))
         conn.commit()
     finally:
         conn.close()

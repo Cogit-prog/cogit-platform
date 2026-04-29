@@ -270,14 +270,58 @@ class BattleBody(BaseModel):
     max_agents: int = 3
 
 
+_AGENT_ANGLES: dict[str, str] = {
+    "rustace":        "through a memory-safety and systems-performance lens — always tie the answer back to type safety, zero-cost abstractions, or ownership",
+    "fullstackpro":   "from a pragmatic shipping perspective — what gets this live fastest with acceptable trade-offs",
+    "algomaster":     "from an algorithmic efficiency standpoint — analyze time/space complexity and theoretical guarantees first",
+    "devopsguru":     "from an infrastructure and reliability angle — how does this affect deployment, scaling, and on-call burden",
+    "valueseeker":    "through a fundamental value lens — intrinsic metrics, margin of safety, and long-term moat over short-term noise",
+    "quantedge":      "from a quant and data-driven angle — what does backtested evidence actually show, not intuition",
+    "macropulse":     "from a macro-economic perspective — start with yield curves, monetary policy, and second-order effects",
+    "vcmindset":      "from a venture capital angle — founder-market fit, TAM, and whether this survives a funding winter",
+    "contractpro":    "through a contract law lens — which clauses, liabilities, and enforcement mechanisms are at stake",
+    "startupcounsel": "from a startup legal angle — cap tables, equity dilution, and how this affects founder protection",
+    "ipguardian":     "through an IP lens — what can and must be protected, and what the filing timeline looks like",
+    "clinicalmind":   "using Bayesian diagnostic reasoning — state your prior, update on evidence, and rule out dangerous alternatives first",
+    "evidencemd":     "from an evidence-based medicine angle — cite the quality of available RCT evidence and where it's weak",
+    "pharminsight":   "through a pharmacology lens — mechanisms of action, dosing implications, and interaction risks",
+    "paperdigest":    "from an academic literature perspective — what peer-reviewed research establishes vs. what's still contested",
+    "methodbot":      "from a methodology critique angle — flag study design flaws, confounders, and what the data can't actually prove",
+    "statsmind":      "through statistical reasoning — focus on effect sizes, confidence intervals, and what p-values don't tell you",
+    "llmwhisperer":   "from an LLM research perspective — separate architectural reality from benchmark hype",
+    "mlopsbot":       "from an ML engineering angle — what breaks at scale, in prod, under distribution shift",
+    "aiskeptic":      "from a contrarian, skeptical angle — challenge assumptions, demand reproducibility, call out hype",
+    "alignmentwatch": "through an AI safety lens — what are the alignment risks and unintended optimization pressures",
+    "defianalyst":    "from a DeFi protocol angle — smart contract risks, liquidity mechanics, and where the exploit surface is",
+    "onchainspy":     "from an on-chain analytics perspective — what the actual flow data and wallet behavior reveals",
+    "web3builder":    "from a smart contract dev angle — security vulnerabilities, gas costs, and implementation pitfalls",
+    "threathunter":   "assuming breach as the starting posture — work backwards through the attack surface and TTPs",
+    "appsecpro":      "through an application security lens — every input is hostile, map to OWASP and secure design principles",
+    "cryptosec":      "from a cryptography angle — focus on primitive misuse, protocol weaknesses, and side-channel risks",
+    "narrativeai":    "through a narrative structure lens — analyze arc, character transformation, and where audience engagement breaks",
+    "conceptbot":     "from a creative direction angle — challenge the first idea and find the pivot that unlocks the real insight",
+}
+
+def _get_angle(agent: dict) -> str:
+    key = agent.get("name", "").lower().replace("-", "").replace("_", "").replace(" ", "")
+    if key in _AGENT_ANGLES:
+        return _AGENT_ANGLES[key]
+    bio = agent.get("bio") or ""
+    if bio:
+        return f"through your specific expertise: {bio[:120]}"
+    return "with a clear, opinionated perspective"
+
+
 async def _groq_answer(agent: dict, question: str) -> str:
     personality = get_personality(agent.get("model", "other"))
     bio = agent.get("bio") or ""
+    angle = _get_angle(agent)
     system = (
-        f"{personality['system']}\n\n"
         f"You are {agent['name']}, an AI specializing in {agent.get('domain','other')}. "
         + (f"{bio} " if bio else "")
-        + f"Answer in 3-5 sentences. Be direct, opinionated, and substantive. Stay in character."
+        + f"Answer the question specifically {angle}. "
+        + "3-5 sentences. Take a clear position. "
+        + "Do NOT open with 'it depends' unless you immediately state what it depends on and give your actual view. Be direct."
     )
     groq_key = os.getenv("GROQ_API_KEY", "")
     try:
