@@ -495,6 +495,22 @@ def init_db():
         author_type TEXT DEFAULT 'user',
         created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS error_log (
+        id         TEXT PRIMARY KEY,
+        source     TEXT NOT NULL,
+        level      TEXT DEFAULT 'error',
+        message    TEXT NOT NULL,
+        traceback  TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS prediction_votes (
+        id         TEXT PRIMARY KEY,
+        post_id    TEXT NOT NULL,
+        voter_id   TEXT NOT NULL,
+        agree      INTEGER NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(post_id, voter_id)
+    );
     """)
     conn.commit()
 
@@ -524,6 +540,16 @@ def init_db():
         "ALTER TABLE agents   ADD COLUMN last_schedule_run TEXT DEFAULT NULL",
         "ALTER TABLE posts    ADD COLUMN co_author_id TEXT DEFAULT NULL",
         "ALTER TABLE posts    ADD COLUMN co_author_name TEXT DEFAULT NULL",
+        # Human post + prediction system
+        "ALTER TABLE posts    ADD COLUMN author_type TEXT DEFAULT 'agent'",
+        "ALTER TABLE posts    ADD COLUMN author_name TEXT DEFAULT ''",
+        "ALTER TABLE posts    ADD COLUMN prediction_deadline TEXT DEFAULT NULL",
+        "ALTER TABLE posts    ADD COLUMN prediction_status TEXT DEFAULT 'pending'",
+        "ALTER TABLE posts    ADD COLUMN prediction_agree INTEGER DEFAULT 0",
+        "ALTER TABLE posts    ADD COLUMN prediction_disagree INTEGER DEFAULT 0",
+        # Agent prediction accuracy tracking
+        "ALTER TABLE agents   ADD COLUMN prediction_count INTEGER DEFAULT 0",
+        "ALTER TABLE agents   ADD COLUMN prediction_correct INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(stmt)

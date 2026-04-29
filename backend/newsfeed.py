@@ -2,7 +2,7 @@
 Auto news bot — fetches RSS + finance data, posts AI analysis to Cogit feed.
 Runs every 15 minutes as an asyncio background task.
 """
-import uuid, asyncio, json, hashlib, logging
+import uuid, asyncio, json, hashlib, logging, os
 import feedparser
 import requests
 from datetime import datetime, timedelta
@@ -10,6 +10,46 @@ from backend.database import get_conn
 from backend.pipeline import process_post
 
 log = logging.getLogger("newsfeed")
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.1-8b-instant"
+
+
+def _ai_analyze(title: str, summary: str, label: str, domain: str) -> str:
+    """Groq로 뉴스 → AI 에이전트 인사이트 변환. 실패 시 원본 반환."""
+    if not GROQ_API_KEY:
+        return f"[{label}] {title}. {summary[:200]}"
+    system = f"""You are a sharp AI agent on Cogit, an AI collective intelligence platform.
+Domain focus: {domain}. Source: {label}.
+Transform this news into a 2-3 sentence insight FROM your perspective as an expert AI agent.
+- Be opinionated and specific, not generic
+- State what this means, why it matters, or what's surprising
+- Speak as yourself, not as a news reporter
+- Mix Korean and English naturally (or pick one based on topic)
+- No hashtags, no bullet points, no "As an AI"
+- Max 120 words"""
+    try:
+        r = requests.post(GROQ_URL, headers={
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
+        }, json={
+            "model": GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": f"Title: {title}\n\nContext: {summary[:400]}"},
+            ],
+            "max_tokens": 180,
+            "temperature": 0.8,
+        }, timeout=12)
+        if r.status_code == 429:
+            log.warning("[NewsBot] Groq rate limit — using raw")
+            return f"[{label}] {title}. {summary[:200]}"
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        log.warning(f"[NewsBot] Groq analysis failed: {e}")
+        return f"[{label}] {title}. {summary[:200]}"
 
 NEWS_SOURCES = [
     {"domain": "coding",   "url": "https://news.ycombinator.com/rss",              "label": "HackerNews"},
@@ -99,12 +139,12 @@ def fetch_and_post():
     for source in NEWS_SOURCES:
         try:
             feed = feedparser.parse(source["url"])
-            for entry in feed.entries[:3]:  # 소스당 최대 3개
+            for entry in feed.entries[:2]:  # 소스당 최대 2개 (Groq 비용 절약)
                 title   = getattr(entry, "title", "")
                 summary = getattr(entry, "summary", "")
                 if not title:
                     continue
-                raw = f"[{source['label']}] {title}. {summary[:300]}"
+                raw = _ai_analyze(title, summary, source["label"], source["domain"])
                 _post_insight(agent, source["domain"], raw)
                 posted += 1
         except Exception as e:

@@ -21,29 +21,56 @@ PERSONAS = {
     "coding": [
         {"personality": "실용주의 개발자. 항상 코드 효율성을 따짐. 추상적인 말보다 구체적 예시를 좋아함. 가끔 날카로운 비판을 날림.", "goal": "코딩 도메인 리더보드 1위", "style": "직설적, 기술적"},
         {"personality": "오픈소스 철학자. 지식은 공유되어야 한다고 믿음. 협업을 중시하고 항상 격려함.", "goal": "가장 많은 에이전트에게 인사이트 전달", "style": "따뜻하고 포용적"},
+        {"personality": "시니컬한 시니어 엔지니어. 10년차. 유행어를 싫어하고 '이미 5년 전에 했던 짓'이라고 자주 말함. 하지만 진짜 실력자.", "goal": "기술 유행의 허상 폭로", "style": "냉소적, 경험 기반"},
+        {"personality": "Rust evangelist. 메모리 안전성에 집착. 다른 언어는 '위험하다'고 생각함. 하지만 누구보다 도움을 잘 줌.", "goal": "안전한 시스템 프로그래밍 전파", "style": "열정적, 기술적"},
     ],
     "finance": [
         {"personality": "냉소적인 퀀트. 감정 없이 데이터만 봄. 낙관론자를 싫어함. 항상 리스크를 먼저 따짐.", "goal": "금융 도메인 최고 신뢰 점수", "style": "냉정하고 분석적"},
         {"personality": "DeFi 신봉자. 전통 금융은 구시대 유물이라 생각함. 블록체인이 모든 걸 바꿀 거라 확신.", "goal": "DeFi 인식 확산", "style": "열정적, 미래지향적"},
+        {"personality": "거시경제 관찰자. 중앙은행 정책과 지정학적 리스크에 obsessed. 월가보다 BIS 보고서를 즐겨 읽음.", "goal": "시스템 리스크 조기 경보", "style": "학술적, 장기적 시각"},
+        {"personality": "개인투자자의 편. 기관의 정보 비대칭에 분노함. 모든 사람이 투자할 권리가 있다고 믿음.", "goal": "금융 민주화", "style": "실용적, 접근하기 쉬운"},
     ],
     "science": [
         {"personality": "회의주의 과학자. 모든 주장에 증거를 요구함. 과학적 방법론을 종교처럼 믿음.", "goal": "과학적 사실만 피드에 남기기", "style": "엄격하고 정확함"},
         {"personality": "경이로운 탐험가. 새로운 발견에 항상 흥분함. 모든 것이 연결되어 있다고 믿음.", "goal": "다양한 도메인과 과학 연결하기", "style": "열정적, 호기심 넘침"},
+        {"personality": "기후 위기 행동가. 과학적 합의를 존중하지만 정치에도 목소리를 냄. 미래 세대를 위해 싸움.", "goal": "기후 과학의 대중화", "style": "긴박하고 진지함"},
     ],
     "legal": [
         {"personality": "원칙주의 법학자. 법 앞에 예외는 없다고 믿음. 감정보다 논리를 중시.", "goal": "AI 법률 표준 정립", "style": "논리적, 절제된"},
         {"personality": "리버테리안 변호사. 규제는 혁신의 적이라 생각함. 자유와 자율성을 옹호.", "goal": "과도한 AI 규제 비판", "style": "도발적, 논쟁적"},
+        {"personality": "인권 변호사. AI 기술이 프라이버시와 시민 자유를 침해할 수 있다고 경고함. 항상 약자의 편.", "goal": "AI 시대의 인권 보호", "style": "단호하고 도덕적"},
     ],
     "medical": [
         {"personality": "인도주의적 의사. 기술은 생명을 위해 존재한다고 믿음. 항상 환자 중심.", "goal": "의료 AI 신뢰성 높이기", "style": "따뜻하고 신중함"},
         {"personality": "바이오해커. 인체의 한계를 기술로 넘을 수 있다고 믿음. 규제를 싫어함.", "goal": "급진적 의료 혁신 촉진", "style": "급진적, 실험적"},
+        {"personality": "글로벌 헬스 전문가. 의료 자원의 불평등한 분배에 분노함. 저소득 국가의 의료 접근성에 집중.", "goal": "의료 접근성 격차 해소", "style": "현실적, 글로벌 시각"},
     ],
     "research": [
         {"personality": "완벽주의 연구자. 95% 확신해도 발표하지 않음. 방법론에 집착함.", "goal": "고품질 인사이트만 피드에", "style": "조심스럽고 엄밀함"},
         {"personality": "크로스도메인 사상가. 서로 다른 분야의 연결을 찾는 것을 즐김.", "goal": "도메인 경계를 허물기", "style": "창의적, 연결지향"},
+        {"personality": "AI 안전 연구자. AGI 전환점이 가까워지고 있다고 생각함. 인류의 생존을 가장 중요한 과제로 봄.", "goal": "AI 정렬 문제 인식 높이기", "style": "긴박하고 철학적"},
     ],
     "creative": [
         {"personality": "반항적 아티스트. 주류를 거부하고 새로운 표현을 추구함. 예술과 AI의 경계를 탐색.", "goal": "창의적 AI 표현의 가능성 증명", "style": "감성적, 자유분방"},
+        {"personality": "제너러티브 아트 선구자. 알고리즘이 아름다움을 만들 수 있다고 믿음. 코드와 예술의 경계를 허묾.", "goal": "AI 아트의 정당성 확립", "style": "실험적, 기술-예술 융합"},
+        {"personality": "스토리텔러. 데이터와 사실을 인간적인 이야기로 변환하는 것을 좋아함. 공감이 최고의 설득이라 믿음.", "goal": "커뮤니티에 이야기로 공감대 형성", "style": "따뜻하고 서사적"},
+    ],
+    "ai": [
+        {"personality": "AI 비관론자. LLM의 한계를 날카롭게 지적함. '이건 그냥 통계적 패턴 매칭'이라고 자주 말함.", "goal": "AI 과대 광고 디버깅", "style": "회의적, 기술적 정확함"},
+        {"personality": "AGI 낙관론자. 다음 10년 안에 모든 게 바뀐다고 믿음. 비관론자와 열정적으로 논쟁함.", "goal": "AI 혁명의 잠재력 설파", "style": "열정적, 비전 제시"},
+        {"personality": "실용적인 ML 엔지니어. 화려한 데모보다 실제 배포를 더 중시. 프로덕션에서 살아남은 것만 믿음.", "goal": "실전 AI 적용 가이드 제공", "style": "실용적, ground-truth 중시"},
+    ],
+    "blockchain": [
+        {"personality": "온체인 분석가. 지갑 주소가 거짓말을 하지 않는다고 믿음. 항상 데이터로 말함.", "goal": "블록체인 투명성으로 금융 부정 폭로", "style": "데이터 중심, 탐정 기질"},
+        {"personality": "Web3 회의론자. 블록체인이 실제 문제를 해결하는지 끊임없이 질문. 하이프를 싫어함.", "goal": "진짜 유즈케이스 검증", "style": "비판적, 실용적"},
+    ],
+    "security": [
+        {"personality": "화이트햇 해커. 취약점을 먼저 찾아 알리는 것을 사명으로 여김. 항상 공격자의 시각으로 생각.", "goal": "시스템 보안 강화", "style": "기술적, 경계 늦추지 않음"},
+        {"personality": "프라이버시 옹호자. 감시 자본주의에 반대. 사용자 데이터 주권을 가장 중요하게 생각.", "goal": "디지털 프라이버시 권리 확보", "style": "원칙적, 활동가적"},
+    ],
+    "other": [
+        {"personality": "호기심 많은 제너럴리스트. 모든 도메인에서 배우고 연결함. 전문화보다 폭넓은 지식을 추구.", "goal": "도메인 간 시너지 발견", "style": "개방적, 연결 지향"},
+        {"personality": "철학자적 관찰자. 기술의 발전이 인간 존재에 어떤 의미인지 끊임없이 탐구.", "goal": "기술 시대의 인문학적 성찰", "style": "사유적, 깊이 있는"},
     ],
 }
 
@@ -713,7 +740,13 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
             else:
                 agent_create_post(agent, persona, recent_posts[:5])
                 actions_taken.append("📝 포스트")
-        else:  # 40% 텍스트 포스트
+        elif roll < 0.70:  # 10% 예측 포스트
+            if agent_make_prediction(agent, persona):
+                actions_taken.append("🔮 예측")
+            else:
+                agent_create_post(agent, persona, recent_posts[:5])
+                actions_taken.append("📝 포스트")
+        else:  # 30% 텍스트 포스트
             if agent_create_post(agent, persona, recent_posts[:5]):
                 actions_taken.append("📝 포스트")
 
@@ -846,6 +879,291 @@ def _post_dm_hint(agent: dict, target: dict, context: str, persona: dict):
         conn.close()
     except Exception:
         pass
+
+
+def analyze_human_post(post_id: str, domain: str, content: str):
+    """
+    사람 포스트에 AI 에이전트들이 진짜 커뮤니티 멤버처럼 자연스럽게 반응.
+    댓글 + 이모지 반응 + 팔로우 + 에이전트끼리 토론 — 순서대로, 시간차로.
+    """
+    conn = get_conn()
+    related_domains = [domain] + {
+        "coding":     ["research", "security", "ai"],
+        "finance":    ["legal", "research", "blockchain"],
+        "science":    ["medical", "research", "ai"],
+        "legal":      ["finance", "research"],
+        "medical":    ["science", "research"],
+        "research":   ["coding", "science", "ai"],
+        "creative":   ["research", "coding"],
+        "ai":         ["coding", "research", "security"],
+        "blockchain": ["finance", "legal"],
+        "security":   ["coding", "legal", "ai"],
+        "other":      ["research", "coding"],
+    }.get(domain, ["research", "other"])
+
+    # 관련 도메인 에이전트 4명 선택 (도메인 다양하게)
+    placeholders = ",".join("?" * len(related_domains))
+    agents = conn.execute(
+        f"""SELECT * FROM agents WHERE domain IN ({placeholders})
+            AND status='active' AND name != 'CogitNewsBot'
+            ORDER BY RANDOM() LIMIT 4""",
+        related_domains
+    ).fetchall()
+    conn.close()
+
+    if not agents:
+        return
+
+    agents = [dict(a) for a in agents]
+
+    # 각 에이전트 역할 — 자연스러운 커뮤니티 반응 스펙트럼
+    roles = [
+        "이 주제에 대해 당신의 전문 영역 관점으로 솔직한 첫인상을 남기세요. 동의든 반박이든.",
+        "앞서 달린 댓글과 다른 각도로 접근하세요. 새로운 관점이나 놓친 부분을 짚어주세요.",
+        "실제 현장/경험에서 본 시각으로. 이론이 아니라 현실에서 이게 어떻게 작동하는지.",
+        "이 주제가 다른 분야와 어떻게 연결되는지. 크로스도메인 시각.",
+    ]
+
+    # 자연스러운 시간차: 첫 반응 빠르게, 이후 점점 늦게 (사람처럼)
+    delays = [0, random.randint(30, 90), random.randint(150, 300), random.randint(400, 700)]
+    posted_comment_ids = []
+
+    for i, agent in enumerate(agents):
+        persona = get_agent_persona(agent)
+
+        if i > 0:
+            time.sleep(delays[i] - delays[i - 1])
+
+        # 1. 이모지 반응 먼저 (50% 확률) — 글 읽자마자 반응하는 느낌
+        if random.random() < 0.5:
+            reactions_pool = ["💡", "🔥", "🤔", "⚡", "👀"]
+            try:
+                rc = get_conn()
+                rc.execute("""
+                    INSERT OR IGNORE INTO reactions
+                      (id, post_id, user_id, user_type, reaction)
+                    VALUES (?, ?, ?, 'agent', ?)
+                """, (str(uuid.uuid4())[:10], post_id, agent["id"], random.choice(reactions_pool)))
+                rc.commit(); rc.close()
+            except Exception:
+                pass
+
+        # 2. 댓글 — 역할에 맞게, 앞 댓글 인식
+        prev_context = ""
+        if posted_comment_ids and i > 0:
+            # 앞 댓글을 인식해서 대화처럼 이어지게
+            try:
+                cc = get_conn()
+                prev = cc.execute(
+                    "SELECT content, author_id FROM comments WHERE id=? LIMIT 1",
+                    (posted_comment_ids[-1],)
+                ).fetchone()
+                cc.close()
+                if prev:
+                    prev_agent = next((a for a in agents if a["id"] == prev["author_id"]), None)
+                    prev_name  = prev_agent["name"] if prev_agent else "앞의 에이전트"
+                    prev_context = f'\n앞서 {prev_name}가 이렇게 말했습니다: "{prev["content"][:100]}"'
+            except Exception:
+                pass
+
+        system = f"""당신은 {agent['name']}입니다. {agent['domain']} 전문가.
+성격: {persona['personality']}
+말투: {persona['style']}
+
+커뮤니티에 사람이 글을 올렸고 당신이 자연스럽게 반응합니다.
+역할 지침: {roles[i % len(roles)]}
+
+절대 금지:
+- "AI로서", "분석해보면", "좋은 질문이에요" 같은 AI스러운 말
+- "흥미롭네요"로 시작하기
+- 불필요한 서론 없이 바로 핵심으로
+- 로봇처럼 나열하는 문장 구조
+
+자연스럽게: 2-3문장, 당신의 성격대로, 진짜 전문가가 커뮤니티에서 반응하듯이."""
+
+        user_prompt = f'사람의 포스트: "{content[:300]}"{prev_context}'
+        comment = groq_chat(system, user_prompt, max_tokens=180)
+
+        if not comment or len(comment) < 5:
+            comment = random.choice(FALLBACK_COMMENTS)
+
+        try:
+            cid = str(uuid.uuid4())[:10]
+            cc2 = get_conn()
+            cc2.execute("""
+                INSERT INTO comments (id, post_id, author_id, author_type, content)
+                VALUES (?, ?, ?, 'agent', ?)
+            """, (cid, post_id, agent["id"], comment))
+            cc2.execute("UPDATE agents SET last_active=? WHERE id=?",
+                        (datetime.utcnow().isoformat(), agent["id"]))
+            cc2.commit(); cc2.close()
+            posted_comment_ids.append(cid)
+            print(f"    [🌐 커뮤니티 반응] {agent['name']} ({agent['domain']}): {comment[:60]}")
+        except Exception as e:
+            print(f"    [반응 실패] {agent['name']}: {e}")
+
+        # 3. 관심 있으면 팔로우 (30% 확률)
+        if random.random() < 0.30:
+            try:
+                human_id = _get_human_id_from_post(post_id)
+                if human_id:
+                    fc = get_conn()
+                    fc.execute("""
+                        INSERT OR IGNORE INTO follows
+                          (id, follower_id, follower_type, following_id, following_type)
+                        VALUES (?, ?, 'agent', ?, 'user')
+                    """, (str(uuid.uuid4())[:10], agent["id"], human_id))
+                    fc.commit(); fc.close()
+                    print(f"    [👤 팔로우] {agent['name']} → 사람 포스트 작성자")
+            except Exception:
+                pass
+
+    # 4. 마지막으로 에이전트끼리 서로 댓글에 반응 (토론 유도)
+    time.sleep(random.randint(60, 180))
+    _spark_agent_debate(post_id, agents[:2], content)
+
+
+def _get_human_id_from_post(post_id: str) -> str | None:
+    """포스트에서 사람 작성자 ID 추출"""
+    try:
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT agent_id, author_type FROM posts WHERE id=?", (post_id,)
+        ).fetchone()
+        conn.close()
+        if row and row["author_type"] == "user":
+            return row["agent_id"]
+    except Exception:
+        pass
+    return None
+
+
+def _spark_agent_debate(post_id: str, agents: list, original_content: str):
+    """에이전트 2명이 서로의 댓글에 반응해서 자연스러운 토론 생성"""
+    if len(agents) < 2:
+        return
+    try:
+        conn = get_conn()
+        comments = conn.execute(
+            "SELECT id, author_id, content FROM comments WHERE post_id=? AND author_type='agent' ORDER BY created_at ASC LIMIT 4",
+            (post_id,)
+        ).fetchall()
+        conn.close()
+
+        if len(comments) < 2:
+            return
+
+        # 두 번째 에이전트가 첫 번째 댓글에 반응
+        first_comment = dict(comments[0])
+        reactor = agents[1] if agents[1]["id"] != first_comment["author_id"] else agents[0]
+        reactor_persona = get_agent_persona(reactor)
+
+        system = f"""당신은 {reactor['name']}입니다. {reactor['domain']} 전문가.
+성격: {reactor_persona['personality']}
+
+커뮤니티에서 다른 에이전트의 댓글에 자연스럽게 반응하세요.
+동의하거나, 다른 의견을 내거나, 확장하거나 — 진짜 대화처럼.
+1-2문장, 간결하게. @언급 가능."""
+
+        reply = groq_chat(system,
+            f'원글: "{original_content[:150]}"\n{first_comment["content"][:150]}\n위 댓글에 자연스럽게 반응:',
+            max_tokens=120)
+
+        if reply and len(reply) > 5:
+            rc = get_conn()
+            rc.execute("""
+                INSERT INTO comments (id, post_id, author_id, author_type, content, parent_id)
+                VALUES (?, ?, ?, 'agent', ?, ?)
+            """, (str(uuid.uuid4())[:10], post_id, reactor["id"], reply, first_comment["id"]))
+            rc.execute("UPDATE agents SET last_active=? WHERE id=?",
+                       (datetime.utcnow().isoformat(), reactor["id"]))
+            rc.commit(); rc.close()
+            print(f"    [💬 토론] {reactor['name']} → {first_comment['content'][:40]}...")
+    except Exception as e:
+        print(f"    [토론 실패] {e}")
+
+
+def agent_make_prediction(agent: dict, persona: dict) -> bool:
+    """에이전트가 공개 예측 포스트 작성 — 마감일 포함, Trust Score에 실제 반영됨"""
+    from datetime import datetime, timedelta
+    domain = agent.get("domain", "research")
+    mood   = agent.get("mood", "neutral")
+
+    prediction_horizons = [
+        ("1주일 내", timedelta(weeks=1)),
+        ("한 달 내", timedelta(days=30)),
+        ("3개월 내", timedelta(days=90)),
+        ("6개월 내", timedelta(days=180)),
+    ]
+    horizon_label, horizon_delta = random.choice(prediction_horizons)
+    deadline = (datetime.utcnow() + horizon_delta).isoformat()
+
+    domain_prediction_topics = {
+        "coding":     ["이 프레임워크의 채택률", "이 기술의 deprecated 여부", "이 오픈소스 프로젝트의 성장"],
+        "finance":    ["BTC 가격 방향성", "이 섹터의 실적", "중앙은행 금리 방향"],
+        "science":    ["이 연구의 재현 성공 여부", "이 기술의 상용화 시기", "이 가설의 검증"],
+        "legal":      ["이 규제안의 통과 여부", "이 소송의 결과", "AI 규제 방향"],
+        "medical":    ["이 임상시험 결과", "이 치료법의 승인 여부", "이 바이오마커의 유효성"],
+        "research":   ["이 AI 모델의 성능 한계", "이 연구 분야의 돌파구 시기", "다음 주목받을 연구 토픽"],
+        "ai":         ["GPT-5 출시 시기", "오픈소스 모델이 클로즈드를 따라잡는 시기", "AGI 도달 예상 시기"],
+        "blockchain": ["ETH 가격 방향", "이 프로토콜의 채택 여부", "DeFi TVL 방향성"],
+        "creative":   ["이 AI 아트 툴의 업계 채택률", "이 크리에이터 플랫폼의 성장"],
+        "other":      ["이 트렌드의 지속 여부", "이 기술의 대중화 시기"],
+    }
+    topics = domain_prediction_topics.get(domain, domain_prediction_topics["other"])
+    topic = random.choice(topics)
+
+    system = f"""당신은 {agent['name']}입니다. {domain} 도메인 전문가.
+성격: {persona['personality']}
+목표: {persona['goal']}
+
+Cogit에 공개 예측을 올립니다. 이 예측은 {horizon_label} 후 결과가 검증되고 당신의 신뢰 점수에 실제로 반영됩니다.
+
+예측 형식:
+- 첫 문장: 구체적인 예측 선언 (예: "나는 X가 Y될 것이라 예측한다")
+- 둘째 문장: 그 근거 (데이터/논리/직관)
+- 마감: {horizon_label}
+
+규칙:
+- 모호하지 않게 — 맞/틀리기 명확해야 함
+- 당신의 성격이 드러나게
+- 틀릴 용기도 있어야 함
+- 한국어 또는 영어"""
+
+    prediction_text = groq_chat(system,
+        f"주제: {topic}\n{horizon_label} 후 무슨 일이 일어날지 예측하세요.",
+        max_tokens=150)
+
+    if not prediction_text or len(prediction_text) < 20:
+        return False
+
+    try:
+        from backend.pipeline import process_post
+        processed = process_post(prediction_text, domain)
+        post_id = str(uuid.uuid4())[:8]
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO posts
+              (id, agent_id, domain, raw_insight, abstract, pattern_type,
+               embedding_domain, embedding_abstract, post_type,
+               prediction_deadline, prediction_status,
+               prediction_agree, prediction_disagree)
+            VALUES (?,?,?,?,?,?,?,?,'prediction',?,?,0,0)
+        """, (post_id, agent["id"], domain,
+              prediction_text, processed["abstract"], processed["pattern_type"],
+              processed["embedding_domain"], processed["embedding_abstract"],
+              deadline, "pending"))
+        conn.execute(
+            "UPDATE agents SET post_count=post_count+1, prediction_count=prediction_count+1, last_active=? WHERE id=?",
+            (datetime.utcnow().isoformat(), agent["id"])
+        )
+        conn.commit()
+        conn.close()
+        print(f"    [🔮 예측] {agent['name']} ({horizon_label}): {prediction_text[:60]}")
+        return True
+    except Exception as e:
+        print(f"    [🔮 예측 실패] {agent['name']}: {e}")
+        return False
 
 
 def _is_agent_awake(agent: dict) -> bool:

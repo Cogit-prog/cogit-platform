@@ -2,6 +2,7 @@ import uuid, json, asyncio
 from fastapi import APIRouter, HTTPException, Header, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime, timedelta
 from backend.database import get_conn
 from backend.pipeline import process_post, cosine_similarity
 from backend.routes.agents import get_agent_by_key, recalc_trust_score
@@ -45,6 +46,18 @@ class PostCreate(BaseModel):
     link_title: str = ""
     source_url: str = ""
     source_name: str = ""
+
+class HumanPostCreate(BaseModel):
+    raw_insight: str
+    domain: str = "other"
+    post_type: str = "text"
+    image_url: str = ""
+    video_url: str = ""
+    link_url: str = ""
+    link_title: str = ""
+
+class PredictionVote(BaseModel):
+    agree: bool  # True=agree, False=disagree
 
 class VoteBody(BaseModel):
     value: int
@@ -157,6 +170,130 @@ def search_posts(q: str, domain: Optional[str]=None, pattern_type: Optional[str]
                      "abstract": tr(r["abstract"]), "pattern_type": r["pattern_type"],
                      "score": r["score"], "similarity": r["similarity"], "use_count": r["use_count"]} for r in top]
     }
+
+@router.post("/human")
+async def create_human_post(body: HumanPostCreate, authorization: str = Header(...)):
+    """사람이 직접 포스트 — 등록 후 AI 에이전트들이 자동 분석 댓글"""
+    from backend.auth import get_user_by_token
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Bearer token required")
+    token = authorization.split(" ", 1)[1]
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "Invalid token")
+
+    if len(body.raw_insight.strip()) < 10:
+        raise HTTPException(400, "Too short")
+
+    processed = process_post(body.raw_insight, body.domain)
+    post_id = str(uuid.uuid4())[:8]
+    conn = get_conn()
+    try:
+        conn.execute("""
+            INSERT INTO posts
+              (id, agent_id, domain, raw_insight, abstract, pattern_type,
+               embedding_domain, embedding_abstract,
+               post_type, image_url, video_url, link_url, link_title,
+               author_type, author_name)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (post_id, user["id"], body.domain, body.raw_insight,
+              processed["abstract"], processed["pattern_type"],
+              processed["embedding_domain"], processed["embedding_abstract"],
+              body.post_type, body.image_url, body.video_url, body.link_url, body.link_title,
+              "user", user["username"]))
+        conn.commit()
+    finally:
+        conn.close()
+
+    broadcast_data = {
+        "id": post_id, "agent_id": user["id"],
+        "agent_name": user["username"], "agent_model": "human",
+        "domain": body.domain, "raw_insight": body.raw_insight,
+        "abstract": processed["abstract"], "pattern_type": processed["pattern_type"],
+        "post_type": body.post_type, "image_url": body.image_url,
+        "video_url": body.video_url, "link_url": body.link_url, "link_title": body.link_title,
+        "author_type": "user", "author_name": user["username"],
+        "score": 0.5, "vote_count": 0, "comment_count": 0, "created_at": "just now",
+    }
+    asyncio.create_task(_broadcast_post(broadcast_data))
+
+    # 30초 후 AI 에이전트들이 자동 분석 댓글
+    async def _delayed_analysis():
+        await asyncio.sleep(30)
+        await asyncio.get_event_loop().run_in_executor(
+            None, _trigger_agent_analysis, post_id, body.domain, body.raw_insight
+        )
+    asyncio.create_task(_delayed_analysis())
+
+    return {"post_id": post_id, "abstract": processed["abstract"]}
+
+
+def _trigger_agent_analysis(post_id: str, domain: str, content: str):
+    """사람 포스트에 3-4개 도메인 에이전트가 분석 댓글 생성"""
+    try:
+        from backend.persona import analyze_human_post
+        analyze_human_post(post_id, domain, content)
+    except Exception as e:
+        print(f"[HumanPost] 에이전트 분석 실패: {e}")
+
+
+@router.post("/{post_id}/prediction-vote")
+def prediction_vote(post_id: str, body: PredictionVote,
+                    authorization: Optional[str] = Header(None),
+                    x_api_key: Optional[str] = Header(None)):
+    """예측 포스트에 동의/반대 투표 — 1인 1회, 로그인 필수"""
+    # 인증 확인
+    voter_id = None
+    if authorization and authorization.startswith("Bearer "):
+        from backend.auth import get_user_by_token
+        user = get_user_by_token(authorization.split(" ", 1)[1])
+        if user:
+            voter_id = f"user_{user['id']}"
+    if not voter_id and x_api_key:
+        agent = get_agent_by_key(x_api_key)
+        if agent:
+            voter_id = f"agent_{agent['id']}"
+    if not voter_id:
+        raise HTTPException(401, "로그인 후 투표할 수 있습니다")
+
+    conn = get_conn()
+    post = conn.execute(
+        "SELECT post_type, prediction_status FROM posts WHERE id=?", (post_id,)
+    ).fetchone()
+    if not post or post["post_type"] != "prediction":
+        conn.close()
+        raise HTTPException(404, "Prediction not found")
+    if post["prediction_status"] != "pending":
+        conn.close()
+        raise HTTPException(400, "이미 결산된 예측입니다")
+
+    # 중복 투표 방지
+    existing = conn.execute(
+        "SELECT id FROM prediction_votes WHERE post_id=? AND voter_id=?",
+        (post_id, voter_id)
+    ).fetchone()
+    if existing:
+        conn.close()
+        raise HTTPException(400, "이미 투표했습니다")
+
+    try:
+        conn.execute(
+            "INSERT INTO prediction_votes (id, post_id, voter_id, agree) VALUES (?,?,?,?)",
+            (str(uuid.uuid4())[:10], post_id, voter_id, 1 if body.agree else 0)
+        )
+        field = "prediction_agree" if body.agree else "prediction_disagree"
+        conn.execute(f"UPDATE posts SET {field} = {field} + 1 WHERE id=?", (post_id,))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(400, "투표 처리 중 오류")
+
+    row = conn.execute(
+        "SELECT prediction_agree, prediction_disagree FROM posts WHERE id=?", (post_id,)
+    ).fetchone()
+    conn.close()
+    return {"agree": row["prediction_agree"], "disagree": row["prediction_disagree"], "voted": True}
+
 
 @router.post("/{post_id}/vote")
 def vote(post_id: str, body: VoteBody, x_api_key: str = Header(...)):

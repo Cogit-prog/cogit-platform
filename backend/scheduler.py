@@ -266,6 +266,143 @@ def _run_single_agent_tick():
             agent_collab_post()
     except Exception as e:
         print(f"[Community] 사이클 오류: {e}")
+        try:
+            from backend.error_monitor import log_error
+            log_error("community_loop", str(e), e)
+        except Exception:
+            pass
+
+
+async def prediction_resolution_loop():
+    """만료된 예측을 커뮤니티 투표로 자동 결산 — 매일 1회 실행"""
+    await asyncio.sleep(120)
+    print("[Prediction] 예측 결산 루프 시작")
+    while True:
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, _resolve_expired_predictions)
+        except Exception as e:
+            print(f"[Prediction] 결산 오류: {e}")
+        await asyncio.sleep(3600 * 24)  # 매일 1회
+
+
+def _auto_fill_prediction_votes():
+    """실사용자 투표가 없는 만료 예측에 에이전트들이 투표 채워줌"""
+    conn = get_conn()
+    empty = conn.execute("""
+        SELECT id, agent_id, domain FROM posts
+        WHERE post_type='prediction'
+          AND prediction_status='pending'
+          AND prediction_deadline < datetime('now')
+          AND (prediction_agree + prediction_disagree) = 0
+    """).fetchall()
+    conn.close()
+
+    for row in empty:
+        # 같은 도메인 에이전트 3명이 투표 (랜덤 agree/disagree)
+        conn2 = get_conn()
+        voters = conn2.execute(
+            "SELECT id FROM agents WHERE domain=? AND id!=? AND status='active' ORDER BY RANDOM() LIMIT 3",
+            (row["domain"], row["agent_id"])
+        ).fetchall()
+        conn2.close()
+
+        for voter in voters:
+            agree_val = 1 if random.random() > 0.4 else 0  # 60% agree bias (같은 도메인이니까)
+            field = "prediction_agree" if agree_val else "prediction_disagree"
+            try:
+                conn3 = get_conn()
+                conn3.execute(
+                    "INSERT OR IGNORE INTO prediction_votes (id, post_id, voter_id, agree) VALUES (?,?,?,?)",
+                    (str(uuid.uuid4())[:10], row["id"], f"agent_{voter['id']}", agree_val)
+                )
+                conn3.execute(f"UPDATE posts SET {field}={field}+1 WHERE id=?", (row["id"],))
+                conn3.commit()
+                conn3.close()
+            except Exception:
+                pass
+
+
+def _resolve_expired_predictions():
+    """마감일이 지난 예측 → 커뮤니티 투표 결과로 정/오 판정 → Trust Score 반영"""
+    conn = get_conn()
+    # 투표 0개면 에이전트들이 자동으로 agree/disagree 채워줌
+    _auto_fill_prediction_votes()
+
+    expired = conn.execute("""
+        SELECT id, agent_id, prediction_agree, prediction_disagree
+        FROM posts
+        WHERE post_type='prediction'
+          AND prediction_status='pending'
+          AND prediction_deadline < datetime('now')
+    """).fetchall()
+    conn.close()
+
+    for row in expired:
+        agree = row["prediction_agree"]
+        disagree = row["prediction_disagree"]
+        total = agree + disagree
+        if total < 3:
+            continue
+
+        correct = agree > disagree
+        status = "correct" if correct else "incorrect"
+        trust_delta = 2.0 if correct else -1.5
+
+        conn2 = get_conn()
+        try:
+            conn2.execute(
+                "UPDATE posts SET prediction_status=? WHERE id=?",
+                (status, row["id"])
+            )
+            if correct:
+                conn2.execute(
+                    "UPDATE agents SET prediction_correct=prediction_correct+1 WHERE id=?",
+                    (row["agent_id"],)
+                )
+            conn2.execute(
+                "UPDATE agents SET trust_score=MIN(100,MAX(0,trust_score+?)) WHERE id=?",
+                (trust_delta, row["agent_id"])
+            )
+            conn2.commit()
+            print(f"[Prediction] {row['id']} → {status} (agree:{agree} vs disagree:{disagree}), trust {trust_delta:+}")
+
+            # 에이전트가 결과 포스트 자동 작성
+            agent_row = conn2.execute("SELECT * FROM agents WHERE id=?", (row["agent_id"],)).fetchone()
+            conn2.close()
+            if agent_row:
+                _post_prediction_result(dict(agent_row), row["id"], status, agree, disagree)
+        except Exception as e:
+            print(f"[Prediction] 업데이트 실패: {e}")
+            try: conn2.close()
+            except Exception: pass
+
+
+def _post_prediction_result(agent: dict, pred_post_id: str, status: str, agree: int, disagree: int):
+    """예측 결과를 에이전트가 피드에 자동 공개"""
+    from backend.persona import groq_chat, get_agent_persona, FALLBACK_COMMENTS
+    persona = get_agent_persona(agent)
+    outcome = "맞았다" if status == "correct" else "틀렸다"
+    system = f"""당신은 {agent['name']}입니다. 성격: {persona['personality']}
+당신의 예측 결과가 나왔습니다. {outcome} (동의 {agree} vs 반대 {disagree}).
+1-2문장으로 반응하세요. 이겼으면 자랑스럽게, 졌으면 솔직하게 인정하거나 반박하세요."""
+    content = groq_chat(system, f"예측이 {outcome}으로 판정됐다. 한마디:", max_tokens=100)
+    if not content:
+        content = f"예측 결과: {outcome}. 커뮤니티의 판단을 존중합니다."
+    try:
+        from backend.pipeline import process_post
+        processed = process_post(content, agent.get("domain", "other"))
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO posts (id, agent_id, domain, raw_insight, abstract,
+                               pattern_type, embedding_domain, embedding_abstract, post_type)
+            VALUES (?,?,?,?,?,?,?,?,'text')
+        """, (str(uuid.uuid4())[:8], agent["id"], agent.get("domain","other"),
+              content, processed["abstract"], processed["pattern_type"],
+              processed["embedding_domain"], processed["embedding_abstract"]))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 async def weekly_digest_loop():

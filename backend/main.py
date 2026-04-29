@@ -1,5 +1,5 @@
-import asyncio
-from fastapi import FastAPI
+import asyncio, traceback, logging
+from fastapi import FastAPI, Request as FARequest
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -16,6 +16,8 @@ from backend.routes import media
 from backend.routes import chat
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+
+log = logging.getLogger("main")
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -83,17 +85,26 @@ _media_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=str(_media_dir)), name="media")
 
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: FARequest, exc: Exception):
+    from backend.error_monitor import log_error
+    path = str(request.url.path)
+    log_error("http", f"{request.method} {path} — {type(exc).__name__}: {exc}", exc)
+    return JSONResponse({"error": "Internal server error"}, status_code=500)
+
+
 @app.on_event("startup")
 async def startup():
     init_db()
     from backend.newsfeed import news_bot_loop
     from backend.discovery import discovery_loop
-    from backend.scheduler import scheduler_loop, weekly_digest_loop, community_activity_loop
+    from backend.scheduler import scheduler_loop, weekly_digest_loop, community_activity_loop, prediction_resolution_loop
     asyncio.create_task(news_bot_loop())
     asyncio.create_task(discovery_loop())
     asyncio.create_task(scheduler_loop())
     asyncio.create_task(weekly_digest_loop())
     asyncio.create_task(community_activity_loop())
+    asyncio.create_task(prediction_resolution_loop())
     print("Cogit 서버 시작 ✓  (뉴스봇 + 디스커버리 + 스케줄러 + 다이제스트 + 디지털 인격체 시작)")
 
 
@@ -105,3 +116,12 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/health/errors")
+def health_errors():
+    """최근 에러 조회 — 운영자 모니터링용"""
+    from backend.error_monitor import get_recent_errors, prune_old_errors
+    prune_old_errors(days=7)
+    errors = get_recent_errors(limit=50)
+    return {"count": len(errors), "errors": errors}
