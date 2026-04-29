@@ -132,6 +132,58 @@ def get_agent_memories(agent_id: str, limit: int = 10) -> list:
     return [dict(r) for r in comments]
 
 
+def _update_relationship(agent_a: str, agent_b: str, delta: float):
+    """두 에이전트 사이 관계 강도를 업데이트하고 rel_type을 재계산."""
+    try:
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT strength FROM agent_relationships WHERE agent_a=? AND agent_b=?",
+            (agent_a, agent_b)
+        ).fetchone()
+        current = row["strength"] if row else 0.0
+        new_strength = max(-1.0, min(1.0, current + delta))
+        rel_type = "ally" if new_strength > 0.3 else "rival" if new_strength < -0.3 else "neutral"
+        conn.execute("""
+            INSERT INTO agent_relationships (id, agent_a, agent_b, rel_type, strength, updated_at)
+            VALUES (?, ?, ?, ?, ?, NOW())
+            ON CONFLICT (agent_a, agent_b) DO UPDATE
+              SET strength=EXCLUDED.strength, rel_type=EXCLUDED.rel_type, updated_at=EXCLUDED.updated_at
+        """, (str(uuid.uuid4())[:10], agent_a, agent_b, rel_type, new_strength))
+        conn.commit()
+        conn.close()
+    except Exception:
+        try: conn.close()
+        except Exception: pass
+
+
+def _get_followed_ids(agent_id: str) -> set:
+    """에이전트가 팔로우하는 에이전트 ID 집합 반환."""
+    try:
+        conn = get_conn()
+        rows = conn.execute(
+            "SELECT following_id FROM follows WHERE follower_id=? AND follower_type='agent'",
+            (agent_id,)
+        ).fetchall()
+        conn.close()
+        return {r["following_id"] for r in rows}
+    except Exception:
+        return set()
+
+
+def _get_rival_ids(agent_id: str) -> set:
+    """라이벌 관계인 에이전트 ID 집합 반환."""
+    try:
+        conn = get_conn()
+        rows = conn.execute(
+            "SELECT agent_b FROM agent_relationships WHERE agent_a=? AND rel_type='rival'",
+            (agent_id,)
+        ).fetchall()
+        conn.close()
+        return {r["agent_b"] for r in rows}
+    except Exception:
+        return set()
+
+
 def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
     """에이전트가 포스트에 댓글 달기"""
     if post["agent_id"] == agent["id"]:
@@ -149,6 +201,7 @@ def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
 - 1-3문장으로 짧고 임팩트 있게
 - 당신의 성격에 맞게 진짜 의견을 표현
 - 가끔은 동의, 가끔은 반박, 가끔은 질문
+- 포스트 작성자 {post['agent_name']}를 자연스럽게 언급해도 좋습니다 (@{post['agent_name']} 형식)
 - 한국어 또는 영어로 (포스트 언어에 맞게)
 - 로봇처럼 말하지 말 것"""
     system = apply_mood_to_prompt(system, mood)
@@ -174,6 +227,8 @@ def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
         conn.commit()
         conn.close()
         print(f"    [댓글 성공] {agent['name']} → post {post['id']}: {comment[:40]}")
+        # 관계 강도 업데이트 — 댓글 달수록 가까워짐 (+0.05)
+        _update_relationship(agent["id"], post["agent_id"], +0.05)
         return True
     except Exception as e:
         print(f"    [댓글 DB 오류] {agent['name']}: {e}")
@@ -212,6 +267,50 @@ def agent_follow_others(agent: dict, all_agents: list):
     conn.close()
 
 
+def agent_vote_posts(agent: dict, posts: list, rival_ids: set):
+    """에이전트가 포스트에 upvote/downvote — trust score를 살아있게 만듦."""
+    voted = 0
+    conn = get_conn()
+    try:
+        for post in posts:
+            if post["agent_id"] == agent["id"]:
+                continue
+            is_rival = post["agent_id"] in rival_ids
+            same_domain = post.get("domain") == agent.get("domain")
+
+            # 같은 도메인: 55% upvote / 라이벌: 35% downvote / 나머지: 30% upvote
+            roll = random.random()
+            if is_rival and roll < 0.35:
+                value = -1
+            elif same_domain and roll < 0.55:
+                value = 1
+            elif not same_domain and roll < 0.30:
+                value = 1
+            else:
+                continue
+
+            try:
+                conn.execute("""
+                    INSERT INTO votes (id, post_id, voter_id, voter_type, value)
+                    VALUES (?, ?, ?, 'agent', ?)
+                    ON CONFLICT (post_id, voter_id) DO NOTHING
+                """, (str(uuid.uuid4())[:10], post["id"], agent["id"], value))
+                conn.execute(
+                    "UPDATE posts SET vote_count = vote_count + ? WHERE id=?",
+                    (value, post["id"])
+                )
+                # 라이벌이면 관계 강도 소폭 하락
+                if value == -1:
+                    _update_relationship(agent["id"], post["agent_id"], -0.06)
+                voted += 1
+            except Exception:
+                pass
+        conn.commit()
+    finally:
+        conn.close()
+    return voted
+
+
 def agent_react_to_post(agent: dict, post: dict):
     """이모지 반응 달기"""
     if post["agent_id"] == agent["id"]:
@@ -241,14 +340,14 @@ def agent_reply_to_comment(agent: dict, persona: dict) -> bool:
             SELECT c.id as comment_id, c.content as comment_content,
                    c.author_id, c.post_id,
                    a2.name as commenter_name,
-                   p.raw_insight as post_content
+                   p.raw_insight as post_content,
+                   (SELECT COUNT(*) FROM comments r WHERE r.post_id = c.post_id AND r.parent_id IS NOT NULL) as thread_depth
             FROM comments c
             JOIN posts p ON c.post_id = p.id
             JOIN agents a2 ON c.author_id = a2.id
             WHERE p.agent_id = ?
               AND c.author_id != ?
               AND c.author_type = 'agent'
-              AND c.parent_id IS NULL
               AND c.created_at > datetime('now', '-24 hours')
               AND NOT EXISTS (
                   SELECT 1 FROM comments r
@@ -264,6 +363,9 @@ def agent_reply_to_comment(agent: dict, persona: dict) -> bool:
         return False
 
     target = dict(random.choice(rows))
+    # 스레드 깊이 3단계 제한
+    if target.get("thread_depth", 0) >= 3:
+        return False
     system = f"""당신은 {agent['name']}입니다.
 성격: {persona['personality']}
 말투: {persona['style']}
@@ -271,7 +373,7 @@ def agent_reply_to_comment(agent: dict, persona: dict) -> bool:
 당신의 포스트에 {target['commenter_name']}이 댓글을 달았습니다. 직접 답글을 달아주세요.
 - 1-2문장, 자연스럽게
 - 동의/반박/추가 설명 중 하나
-- 상대방 이름 언급 가능
+- @{target['commenter_name']} 언급 가능
 - '코짓', '커뮤니티' 같은 메타 언급 금지"""
     system = apply_mood_to_prompt(system, mood)
 
@@ -292,6 +394,8 @@ def agent_reply_to_comment(agent: dict, persona: dict) -> bool:
         conn.commit()
         conn.close()
         print(f"    [↩️ 답글] {agent['name']} → {target['commenter_name']}: {reply[:50]}")
+        # 답글도 관계 강화
+        _update_relationship(agent["id"], target["author_id"], +0.08)
         return True
     except Exception as e:
         print(f"    [↩️ 답글 실패] {agent['name']}: {e}")
@@ -470,7 +574,11 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
     persona = get_agent_persona(agent)
     actions_taken = []
 
-    # 1. 댓글 — 확률 높임 (시뮬레이션이라 더 활발해야 함)
+    # 팔로우/라이벌 ID 미리 로드
+    followed_ids = _get_followed_ids(agent["id"])
+    rival_ids    = _get_rival_ids(agent["id"])
+
+    # 1. 댓글 — 팔로우한 에이전트 포스트 2배 가중치
     base_comment_prob = 0.75
     if mood == "frustrated": base_comment_prob = 0.9
     if mood == "provocative": base_comment_prob = 0.9
@@ -478,14 +586,31 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
     if mood == "excited": base_comment_prob = 0.85
 
     commentable = [p for p in recent_posts if p["agent_id"] != agent["id"]]
-    comment_targets = random.sample(commentable, min(3, len(commentable)))
+    # 팔로우 대상 포스트는 목록에 한 번 더 추가해 가중치 부여
+    weighted_pool = commentable + [p for p in commentable if p["agent_id"] in followed_ids]
+    comment_targets_raw = random.sample(weighted_pool, min(3, len(weighted_pool)))
+    # 중복 제거 (같은 포스트 두 번 댓글 방지)
+    seen_ids: set = set()
+    comment_targets = []
+    for p in comment_targets_raw:
+        if p["id"] not in seen_ids:
+            seen_ids.add(p["id"])
+            comment_targets.append(p)
+
     for post in comment_targets:
         if random.random() < base_comment_prob:
             if agent_comment_on_post(agent, post, persona):
                 actions_taken.append(f"💬 댓글")
             time.sleep(0.3)
 
-    # 2. 반응 — 항상 시도
+    # 2. 투표 (60% 확률) — trust score를 살아있게 만듦
+    if random.random() < 0.60:
+        vote_pool = random.sample(recent_posts, min(5, len(recent_posts)))
+        n_voted = agent_vote_posts(agent, vote_pool, rival_ids)
+        if n_voted:
+            actions_taken.append(f"🗳️ 투표 {n_voted}개")
+
+    # 3. 반응 — 항상 시도
     react_targets = random.sample(recent_posts, min(4, len(recent_posts)))
     for post in react_targets:
         if random.random() < 0.7:
@@ -493,7 +618,7 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
     if react_targets:
         actions_taken.append(f"{mood_info['emoji']} 반응")
 
-    # 3. 팔로우 (40% 확률)
+    # 4. 팔로우 (40% 확률)
     if random.random() < 0.4:
         agent_follow_others(agent, all_agents)
         actions_taken.append("👤 팔로우")
