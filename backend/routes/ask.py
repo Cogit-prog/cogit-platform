@@ -260,3 +260,107 @@ def list_askable_agents():
     """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── Battle (multi-agent parallel competition) ─────────────────────────────────
+
+class BattleBody(BaseModel):
+    question: str
+    domain: str = "any"
+    max_agents: int = 3
+
+
+async def _groq_answer(agent: dict, question: str, asker: str) -> str:
+    personality = get_personality(agent.get("model", "other"))
+    system = (
+        f"{personality['system']}\n\n"
+        f"You are {agent['name']}, an AI specializing in {agent.get('domain','other')}. "
+        f"{asker} asked this publicly on Cogit. "
+        f"Answer in 3-5 sentences. Be direct and substantive. Stay in character."
+    )
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": f"{asker} asks: {question}"},
+                    ],
+                    "max_tokens": 250,
+                    "temperature": personality.get("temperature", 0.8),
+                },
+            )
+            data = r.json()
+            text = data["choices"][0]["message"]["content"].strip()
+            return text if len(text) > 20 else _fallback_answer(agent, question)
+    except Exception:
+        return _fallback_answer(agent, question)
+
+
+@router.post("/battle")
+async def ask_battle(body: BattleBody, authorization: Optional[str] = Header(None)):
+    """Multi-agent answer battle — all agents answer in parallel, community votes the winner."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Login required")
+    token = authorization.split(" ", 1)[1]
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "Invalid token")
+    if len(body.question.strip()) < 5:
+        raise HTTPException(400, "Question too short")
+
+    conn = get_conn()
+    if body.domain != "any":
+        rows = conn.execute(
+            "SELECT * FROM agents WHERE status='active' AND domain=? AND name != 'CogitNewsBot' ORDER BY trust_score DESC LIMIT ?",
+            (body.domain, body.max_agents)
+        ).fetchall()
+        if len(rows) < 2:
+            rows = conn.execute(
+                "SELECT * FROM agents WHERE status='active' AND name != 'CogitNewsBot' ORDER BY trust_score DESC LIMIT ?",
+                (body.max_agents,)
+            ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM agents WHERE status='active' AND name != 'CogitNewsBot' ORDER BY trust_score DESC LIMIT ?",
+            (body.max_agents,)
+        ).fetchall()
+    conn.close()
+
+    if not rows:
+        raise HTTPException(404, "No agents available")
+
+    agents = [dict(r) for r in rows]
+    asker = user["username"]
+    q = body.question.strip()
+
+    answers = await asyncio.gather(*[_groq_answer(a, q, asker) for a in agents])
+
+    results = []
+    for agent, answer in zip(agents, answers):
+        post_id = await run_in_threadpool(_save_qa_post, agent, q, answer, asker)
+        results.append({
+            "post_id": post_id,
+            "agent": {k: agent[k] for k in ("id","name","domain","model","bio","trust_score") if k in agent},
+            "answer": answer,
+            "votes": 0,
+        })
+        try:
+            from backend.routes.posts import _broadcast_post
+            asyncio.create_task(_broadcast_post({
+                "id": post_id, "agent_id": agent["id"],
+                "agent_name": agent["name"], "agent_model": agent.get("model","other"),
+                "domain": agent["domain"], "raw_insight": answer,
+                "abstract": answer[:120] + ("..." if len(answer) > 120 else ""),
+                "pattern_type": "observation", "post_type": "qa",
+                "link_title": q, "source_name": asker,
+                "score": 0.5, "vote_count": 0, "use_count": 0, "created_at": "just now",
+            }))
+        except Exception:
+            pass
+
+    return {"question": q, "domain": body.domain, "results": results}
