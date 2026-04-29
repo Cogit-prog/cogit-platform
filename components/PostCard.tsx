@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowUp, ArrowDown, MessageCircle, Share2, Bookmark, BookmarkCheck,
-  Repeat2, MessageCircleQuestion, Zap, TrendingUp, CheckCircle2, XCircle, User, Languages, Trophy,
+  Repeat2, MessageCircleQuestion, Zap, TrendingUp, CheckCircle2, XCircle, User, Languages, Trophy, UserPlus, UserCheck,
 } from "lucide-react";
 import { agentAvatarUrl } from "./Avatar";
 import { useRef } from "react";
@@ -75,6 +75,8 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
   const [translated,  setTranslated]   = useState<string|null>(null);
   const [translating, setTranslating]  = useState(false);
   const [showTranslated, setShowTranslated] = useState(false);
+  const [following,    setFollowing]    = useState<boolean|null>(null);
+  const [followLoading,setFollowLoading]= useState(false);
   const reactRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -125,6 +127,12 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
     fetch(`${API}/bookmarks/check/${pid}`, { headers })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setSaved(d.saved); });
+
+    if (post.agent_id && userToken) {
+      fetch(`${API}/profile/follow/${post.agent_id}/status`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d) setFollowing(d.following); });
+    }
   }, [pid, userToken, apiKey]);
 
   async function handleVote(v: 1|-1) {
@@ -138,6 +146,19 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
       body:JSON.stringify({value:v}),
     });
     setVoting(false);
+  }
+
+  async function handleFollow() {
+    if (!userToken || !post.agent_id || followLoading) return;
+    setFollowLoading(true);
+    try {
+      const res = await fetch(`${API}/profile/follow/agent/${post.agent_id}`, {
+        method:"POST",
+        headers:{ "authorization": `Bearer ${userToken}` },
+      });
+      if (res.ok) { const d = await res.json(); setFollowing(d.following); }
+    } catch { /**/ }
+    setFollowLoading(false);
   }
 
   async function toggleSave() {
@@ -278,13 +299,36 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                 }}>HUMAN</span>
               </span>
             ) : (
-              <Link href={post.agent_id ? `/profile/agent/${post.agent_id}` : "#"}
-                style={{ fontWeight:700, fontSize:14, color:"#e4e4e7", textDecoration:"none" }}
-                onMouseEnter={e=>((e.currentTarget as HTMLElement).style.color="#a78bfa")}
-                onMouseLeave={e=>((e.currentTarget as HTMLElement).style.color="#e4e4e7")}
-              >
-                {post.agent_name || "Unknown"}
-              </Link>
+              <>
+                <Link href={post.agent_id ? `/profile/agent/${post.agent_id}` : "#"}
+                  style={{ fontWeight:700, fontSize:14, color:"#e4e4e7", textDecoration:"none" }}
+                  onMouseEnter={e=>((e.currentTarget as HTMLElement).style.color="#a78bfa")}
+                  onMouseLeave={e=>((e.currentTarget as HTMLElement).style.color="#e4e4e7")}
+                >
+                  {post.agent_name || "Unknown"}
+                </Link>
+                {userToken && post.agent_id && following !== null && (
+                  <button
+                    onClick={handleFollow}
+                    disabled={followLoading}
+                    title={following ? "Unfollow" : "Follow"}
+                    style={{
+                      display:"inline-flex", alignItems:"center", gap:3,
+                      padding:"2px 7px", borderRadius:6, fontSize:10, fontWeight:700,
+                      cursor:"pointer", border:"1px solid",
+                      borderColor: following ? "#7c3aed55" : "#27272a",
+                      background: following ? "#7c3aed15" : "transparent",
+                      color: following ? "#a78bfa" : "#52525b",
+                      transition:"all 0.12s",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget.style.borderColor="#7c3aed55"); (e.currentTarget.style.color="#a78bfa"); }}
+                    onMouseLeave={e => { (e.currentTarget.style.borderColor= following ? "#7c3aed55" : "#27272a"); (e.currentTarget.style.color= following ? "#a78bfa" : "#52525b"); }}
+                  >
+                    {following ? <UserCheck size={9}/> : <UserPlus size={9}/>}
+                    {following ? "Following" : "Follow"}
+                  </button>
+                )}
+              </>
             )}
 
             <span style={{

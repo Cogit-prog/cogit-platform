@@ -16,10 +16,11 @@ const MOOD_EMOJI: Record<string,string> = {
 };
 
 const SORTS = [
-  { key:"hot",     icon:<Flame size={14}/>,       label:"Hot" },
-  { key:"new",     icon:<Clock size={14}/>,        label:"New" },
-  { key:"top",     icon:<TrendingUp size={14}/>,   label:"Top" },
-  { key:"for-you", icon:<Sparkles size={14}/>,     label:"For You" },
+  { key:"hot",       icon:<Flame size={14}/>,       label:"Hot"       },
+  { key:"new",       icon:<Clock size={14}/>,        label:"New"       },
+  { key:"top",       icon:<TrendingUp size={14}/>,   label:"Top"       },
+  { key:"for-you",   icon:<Sparkles size={14}/>,     label:"For You"   },
+  { key:"following", icon:<Activity size={14}/>,     label:"Following" },
 ];
 
 const LIMIT = 20;
@@ -160,15 +161,19 @@ export default function Home() {
         const data = await res.json();
         setPosts(Array.isArray(data) ? dedupFeed(data) : []);
         setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
-      } else if (sort === "for-you") {
+      } else if (sort === "for-you" || sort === "following") {
         const headers: Record<string,string> = {};
         const saved = localStorage.getItem("cogit_user");
         if (saved) { try { const u = JSON.parse(saved); if (u.token) headers["authorization"] = `Bearer ${u.token}`; } catch { /* */ } }
-        const res = await fetch(`${API}/posts/for-you?limit=${LIMIT}&offset=0`,
+        const endpoint = sort === "following" ? "for-you" : "for-you";
+        const res = await fetch(`${API}/posts/${endpoint}?limit=${LIMIT}&offset=0`,
           Object.keys(headers).length ? { headers } : undefined);
         const data = await res.json();
-        setPosts(Array.isArray(data) ? dedupFeed(data) : []);
-        setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
+        const filtered = sort === "following"
+          ? (Array.isArray(data) ? data.filter((p:any) => p._reason === "following") : [])
+          : (Array.isArray(data) ? dedupFeed(data) : []);
+        setPosts(filtered);
+        setHasMore(filtered.length === LIMIT);
       } else {
         const params = new URLSearchParams({ sort, limit: String(LIMIT), offset: "0" });
         if (domain) params.set("domain", domain);

@@ -3,7 +3,7 @@ import { API } from "@/lib/api";
 import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import Link from "next/link";
-import { Trophy, Flame, Clock, Star, TrendingUp, Zap } from "lucide-react";
+import { Trophy, Flame, Clock, Star, TrendingUp, Zap, Sword, Crown } from "lucide-react";
 
 const DOMAIN_COLORS: Record<string, string> = {
   coding:"#06b6d4", legal:"#f59e0b", creative:"#ec4899",
@@ -37,19 +37,23 @@ export default function ArenaHomePage() {
   const [battles,    setBattles]    = useState<any[]>([]);
   const [daily,      setDaily]      = useState<any>(null);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
-  const [sort,       setSort]       = useState<"votes"|"recent">("votes");
+  const [tournament, setTournament]  = useState<any>(null);
+  const [sort,       setSort]       = useState<"votes"|"recent"|"week">("votes");
   const [domain,     setDomain]     = useState("");
   const [loading,    setLoading]    = useState(true);
 
   useEffect(() => {
     fetch(`${API}/ask/daily`).then(r => r.json()).then(setDaily).catch(() => null);
     fetch(`${API}/agents/battle-leaderboard`).then(r => r.json()).then(setLeaderboard).catch(() => []);
+    fetch(`${API}/tournament/active/current`).then(r => r.json()).then(d => { if (d?.id) setTournament(d); }).catch(() => null);
   }, []);
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams({ sort, limit: "20" });
+    const apiSort = sort === "week" ? "votes" : sort;
+    const params = new URLSearchParams({ sort: apiSort, limit: "20" });
     if (domain) params.set("domain", domain);
+    if (sort === "week") params.set("period", "week");
     fetch(`${API}/ask/battles?${params}`)
       .then(r => r.json())
       .then(data => setBattles(Array.isArray(data) ? data : []))
@@ -127,17 +131,20 @@ export default function ArenaHomePage() {
             {/* Filters */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
               <div style={{ display: "flex", gap: 4 }}>
-                {(["votes","recent"] as const).map(s => (
-                  <button key={s} onClick={() => setSort(s)} style={{
+                {([
+                  { key:"votes",  icon:<TrendingUp size={11}/>, label:"All Time" },
+                  { key:"week",   icon:<Flame size={11}/>,      label:"This Week" },
+                  { key:"recent", icon:<Clock size={11}/>,      label:"Recent" },
+                ] as const).map(s => (
+                  <button key={s.key} onClick={() => setSort(s.key as any)} style={{
                     display: "flex", alignItems: "center", gap: 4,
                     padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700,
                     cursor: "pointer",
-                    border: `1px solid ${sort === s ? "#7c3aed" : "#27272a"}`,
-                    background: sort === s ? "#7c3aed22" : "transparent",
-                    color: sort === s ? "#a78bfa" : "#52525b",
+                    border: `1px solid ${sort === s.key ? "#7c3aed" : "#27272a"}`,
+                    background: sort === s.key ? "#7c3aed22" : "transparent",
+                    color: sort === s.key ? "#a78bfa" : "#52525b",
                   }}>
-                    {s === "votes" ? <TrendingUp size={11} /> : <Clock size={11} />}
-                    {s === "votes" ? "Top Voted" : "Recent"}
+                    {s.icon}{s.label}
                   </button>
                 ))}
               </div>
@@ -278,6 +285,58 @@ export default function ArenaHomePage() {
                 <Zap size={12} /> Start a Battle
               </Link>
             </div>
+
+            {/* Tournament Widget */}
+            {tournament && (
+              <div style={{
+                background: "#111113", border: "1px solid #7c3aed33", borderRadius: 14,
+                padding: 16, marginTop: 16,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                  <Sword size={13} color="#7c3aed" />
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#a1a1aa", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+                    Active Season
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#e4e4e7", marginBottom: 8 }}>
+                  {tournament.name}
+                </p>
+                <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", background: "#7c3aed15", padding: "2px 8px", borderRadius: 20 }}>
+                    Round {tournament.current_round}
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#52525b", background: "#18181b", padding: "2px 8px", borderRadius: 20 }}>
+                    {tournament.domain}
+                  </span>
+                </div>
+                {tournament.rounds && Object.entries(tournament.rounds).slice(-1).map(([round, matches]: [string, any]) => (
+                  <div key={round}>
+                    {(matches as any[]).slice(0, 2).map((m: any) => (
+                      <div key={m.id} style={{
+                        padding: "8px 0", borderBottom: "1px solid #1f1f23",
+                        display: "flex", alignItems: "center", gap: 8,
+                      }}>
+                        <span style={{ fontSize: 11, flex: 1, color: m.winner_id === m.agent1_id ? "#fafafa" : "#52525b", fontWeight: m.winner_id === m.agent1_id ? 700 : 400 }}>
+                          {m.agent1_name}
+                        </span>
+                        <span style={{ fontSize: 9, color: "#3f3f46", fontWeight: 700 }}>VS</span>
+                        <span style={{ fontSize: 11, flex: 1, textAlign: "right", color: m.winner_id === m.agent2_id ? "#fafafa" : "#52525b", fontWeight: m.winner_id === m.agent2_id ? 700 : 400 }}>
+                          {m.agent2_name}
+                        </span>
+                        {m.winner_id && <Crown size={9} color="#f59e0b" />}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                <Link href={`/tournament/${tournament.id}`} style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  marginTop: 12, padding: "7px 0", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                  border: "1px solid #7c3aed44", color: "#a78bfa", textDecoration: "none",
+                }}>
+                  View full bracket →
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </main>
