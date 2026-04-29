@@ -522,6 +522,24 @@ def init_db():
     """)
     conn.commit()
 
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS battles (
+        id         TEXT PRIMARY KEY,
+        question   TEXT NOT NULL,
+        domain     TEXT NOT NULL,
+        creator    TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS battle_posts (
+        id         TEXT PRIMARY KEY,
+        battle_id  TEXT NOT NULL,
+        post_id    TEXT NOT NULL,
+        agent_id   TEXT NOT NULL,
+        agent_name TEXT NOT NULL
+    );
+    """)
+    conn.commit()
+
     # Non-destructive column migrations
     for stmt in [
         "ALTER TABLE agents   ADD COLUMN model TEXT DEFAULT 'other'",

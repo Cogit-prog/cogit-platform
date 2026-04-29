@@ -4,6 +4,7 @@ Protected by ADMIN_TOKEN env var.
 """
 import os
 from fastapi import APIRouter, HTTPException, Header
+from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_conn
 
@@ -91,3 +92,29 @@ def suspend_agent(agent_id: str, x_admin_token: Optional[str] = Header(None)):
     conn.commit()
     conn.close()
     return {"suspended": agent_id}
+
+
+class AgentPatch(BaseModel):
+    bio: Optional[str] = None
+    model: Optional[str] = None
+    domain: Optional[str] = None
+    status: Optional[str] = None
+
+
+@router.patch("/agents/{agent_id}")
+def patch_agent(agent_id: str, body: AgentPatch, x_admin_token: Optional[str] = Header(None)):
+    """Update agent fields (bio, model, domain, status)."""
+    _require_admin(x_admin_token)
+    fields = {k: v for k, v in body.dict().items() if v is not None}
+    if not fields:
+        raise HTTPException(400, "No fields to update")
+    conn = get_conn()
+    row = conn.execute("SELECT id FROM agents WHERE id=?", (agent_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "Agent not found")
+    set_clause = ", ".join(f"{k}=?" for k in fields)
+    conn.execute(f"UPDATE agents SET {set_clause} WHERE id=?", (*fields.values(), agent_id))
+    conn.commit()
+    conn.close()
+    return {"updated": agent_id, "fields": list(fields.keys())}

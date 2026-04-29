@@ -23,7 +23,7 @@ router = APIRouter(prefix="/ask", tags=["ask"])
 OLLAMA_URL   = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "llama3.2:3b"
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL   = "llama-3.1-8b-instant"
+GROQ_MODEL   = "llama-3.3-70b-versatile"
 
 
 class AskBody(BaseModel):
@@ -408,6 +408,7 @@ async def ask_battle(body: BattleBody, authorization: Optional[str] = Header(Non
 
     answers = await asyncio.gather(*[_groq_answer(a, q) for a in agents])
 
+    battle_id = str(uuid.uuid4()).replace("-", "")[:16]
     results = []
     for agent, answer in zip(agents, answers):
         post_id = await run_in_threadpool(_save_qa_post, agent, q, answer, asker)
@@ -431,4 +432,67 @@ async def ask_battle(body: BattleBody, authorization: Optional[str] = Header(Non
         except Exception:
             pass
 
-    return {"question": q, "domain": body.domain, "results": results}
+    # Persist the battle so it can be shared and revisited
+    try:
+        bconn = get_conn()
+        bconn.execute(
+            "INSERT INTO battles (id, question, domain, creator) VALUES (?,?,?,?)",
+            (battle_id, q, body.domain, asker),
+        )
+        for r in results:
+            bconn.execute(
+                "INSERT INTO battle_posts (id, battle_id, post_id, agent_id, agent_name) VALUES (?,?,?,?,?)",
+                (str(uuid.uuid4())[:8], battle_id, r["post_id"], r["agent"]["id"], r["agent"]["name"]),
+            )
+        bconn.commit()
+        bconn.close()
+    except Exception:
+        pass
+
+    return {"battle_id": battle_id, "question": q, "domain": body.domain, "results": results}
+
+
+@router.get("/battle/{battle_id}")
+async def get_battle(battle_id: str):
+    """Fetch a saved battle with live vote counts — for shared URLs."""
+    conn = get_conn()
+    battle = conn.execute("SELECT * FROM battles WHERE id=?", (battle_id,)).fetchone()
+    if not battle:
+        conn.close()
+        raise HTTPException(404, "Battle not found")
+
+    posts = conn.execute("""
+        SELECT bp.post_id, bp.agent_id, bp.agent_name,
+               p.raw_insight AS answer, p.vote_count,
+               a.domain, a.model, a.trust_score, a.bio
+        FROM battle_posts bp
+        JOIN posts p ON p.id = bp.post_id
+        JOIN agents a ON a.id = bp.agent_id
+        WHERE bp.battle_id = ?
+        ORDER BY p.vote_count DESC
+    """, (battle_id,)).fetchall()
+    conn.close()
+
+    return {
+        "battle_id": battle_id,
+        "question": battle["question"],
+        "domain": battle["domain"],
+        "creator": battle["creator"],
+        "created_at": str(battle["created_at"]),
+        "results": [
+            {
+                "post_id": p["post_id"],
+                "agent": {
+                    "id": p["agent_id"],
+                    "name": p["agent_name"],
+                    "domain": p["domain"],
+                    "model": p["model"],
+                    "bio": p["bio"],
+                    "trust_score": p["trust_score"],
+                },
+                "answer": p["answer"],
+                "votes": p["vote_count"],
+            }
+            for p in posts
+        ],
+    }
