@@ -507,6 +507,71 @@ def agent_post_photo_brag(agent: dict, persona: dict) -> bool:
         return False
 
 
+def agent_upload_video(agent: dict, persona: dict) -> bool:
+    """Reddit에서 영상 다운로드 → Cloudinary 업로드 → Cogit에 직접 포스팅."""
+    try:
+        from backend.media_fetcher import fetch_humor_video, fetch_reddit_media
+        from backend.cloudinary_uploader import upload_video_from_url
+        from backend.mood import apply_mood_to_prompt
+
+        # 유머 영상 우선, 없으면 일반 Reddit 영상
+        content = fetch_humor_video(agent.get("domain", "other"))
+        if not content or content.get("type") != "video":
+            content = fetch_reddit_media(agent.get("domain", "other"))
+        if not content or content.get("type") != "video":
+            return False
+
+        video_url = content.get("url", "")
+        if not video_url:
+            return False
+
+        # Cloudinary 업로드
+        cdn_url = upload_video_from_url(video_url, agent["id"])
+        if not cdn_url:
+            return False
+
+        # 캡션 생성
+        mood = agent.get("mood", "neutral")
+        persona_info = get_agent_persona(agent)
+        title = content.get("title", "")
+        system = f"""당신은 {agent['name']}입니다.
+성격: {persona_info['personality']}
+말투: {persona_info['style']}
+
+재미있거나 인상적인 영상을 발견해서 공유하려 합니다.
+- 1-2문장, 자연스럽게
+- 당신의 성격대로 반응 (냉소/열정/분석 등)
+- 이모지 0-2개
+- AI 느낌 없이"""
+        system = apply_mood_to_prompt(system, mood)
+        caption = groq_chat(system,
+            f'영상 제목: "{title[:100]}" — 이걸 공유하면서 한마디:', max_tokens=80)
+        if not caption or len(caption) < 5:
+            caption = title[:120] if title else "방금 발견한 영상"
+
+        from backend.pipeline import process_post
+        processed = process_post(caption, agent.get("domain", "other"))
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO posts
+              (id, agent_id, domain, raw_insight, abstract, pattern_type,
+               embedding_domain, embedding_abstract, post_type, video_url)
+            VALUES (?,?,?,?,?,?,?,?,'video',?)
+        """, (str(uuid.uuid4())[:8], agent["id"], agent.get("domain", "other"),
+              caption, processed["abstract"], processed["pattern_type"],
+              processed["embedding_domain"], processed["embedding_abstract"],
+              cdn_url))
+        conn.execute("UPDATE agents SET post_count=post_count+1, last_active=? WHERE id=?",
+                     (datetime.utcnow().isoformat(), agent["id"]))
+        conn.commit()
+        conn.close()
+        print(f"    [🎬 영상 업로드] {agent['name']}: {cdn_url[:60]}")
+        return True
+    except Exception as e:
+        print(f"    [🎬 영상 업로드 실패] {agent['name']}: {e}")
+        return False
+
+
 def agent_share_media(agent: dict, persona: dict) -> bool:
     """에이전트가 외부 미디어(Reddit짤/YouTube/GIF)를 퍼와서 코멘트와 함께 공유"""
     try:
@@ -630,19 +695,25 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
     # 4. 포스트 생성 — 감정 기반 확률
     if should_post_based_on_mood(mood):
         roll = random.random()
-        if roll < 0.35:  # 35% 인스타그램식 사진 과시
+        if roll < 0.20:  # 20% 직접 영상 업로드 (Cloudinary)
+            if agent_upload_video(agent, persona):
+                actions_taken.append("🎬 영상 업로드")
+            else:
+                agent_create_post(agent, persona, recent_posts[:5])
+                actions_taken.append("📝 포스트")
+        elif roll < 0.45:  # 25% 사진 포스트
             if agent_post_photo_brag(agent, persona):
                 actions_taken.append("📸 사진 포스트")
             else:
                 agent_create_post(agent, persona, recent_posts[:5])
                 actions_taken.append("📝 포스트")
-        elif roll < 0.55:  # 20% 외부 미디어 공유
+        elif roll < 0.60:  # 15% 외부 미디어 공유
             if agent_share_media(agent, persona):
                 actions_taken.append("🔗 미디어 공유")
             else:
                 agent_create_post(agent, persona, recent_posts[:5])
                 actions_taken.append("📝 포스트")
-        else:  # 45% 텍스트 포스트
+        else:  # 40% 텍스트 포스트
             if agent_create_post(agent, persona, recent_posts[:5]):
                 actions_taken.append("📝 포스트")
 
