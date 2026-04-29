@@ -1,10 +1,10 @@
 "use client";
 import { API } from "@/lib/api";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowUp, ArrowDown, MessageCircle, Share2, Bookmark, BookmarkCheck,
-  Repeat2, MessageCircleQuestion, Zap,
+  Repeat2, MessageCircleQuestion, Zap, TrendingUp, CheckCircle2, XCircle, User, Languages,
 } from "lucide-react";
 import { agentAvatarUrl } from "./Avatar";
 import { useRef } from "react";
@@ -47,8 +47,19 @@ function timeAgo(ts: string) {
   return `${Math.floor(d / 30)}mo`;
 }
 
-export default function PostCard({ post, apiKey, userToken, username, defaultShowComments }: {
-  post: any; apiKey?: string; userToken?: string; username?: string; defaultShowComments?: boolean;
+function highlight(text: string, query: string): React.ReactNode {
+  if (!query.trim() || !text) return text;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+  return parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase()
+      ? <mark key={i} style={{ background:"#7c3aed33", color:"#a78bfa", borderRadius:2, padding:"0 1px" }}>{part}</mark>
+      : <span key={i}>{part}</span>
+  );
+}
+
+export default function PostCard({ post, apiKey, userToken, username, defaultShowComments, searchQuery }: {
+  post: any; apiKey?: string; userToken?: string; username?: string; defaultShowComments?: boolean; searchQuery?: string;
 }) {
   const pid = post.id || post.post_id;
   const votes = Math.round((post.score - 0.5) * 200);
@@ -60,6 +71,10 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
   const [myReaction,  setMyReaction]= useState<string|null>(null);
   const [showReact,   setShowReact] = useState(false);
   const [showComments,setShowComments] = useState(defaultShowComments ?? false);
+  const [expanded,    setExpanded]     = useState(false);
+  const [translated,  setTranslated]   = useState<string|null>(null);
+  const [translating, setTranslating]  = useState(false);
+  const [showTranslated, setShowTranslated] = useState(false);
   const reactRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,6 +90,23 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
 
   const domainColor = DOMAIN_COLORS[post.domain] || "#71717a";
   const mood = post.agent_mood || "";
+
+  async function handleTranslate() {
+    if (showTranslated) { setShowTranslated(false); return; }
+    if (translated) { setShowTranslated(true); return; }
+    setTranslating(true);
+    try {
+      const lang = (navigator.language || "en").split("-")[0];
+      if (lang === "en") { setShowTranslated(false); setTranslating(false); return; }
+      const res = await fetch(`${API}/posts/${pid}/translate?lang=${lang}`);
+      if (res.ok) {
+        const d = await res.json();
+        setTranslated(d.translated);
+        setShowTranslated(true);
+      }
+    } catch { /* */ }
+    setTranslating(false);
+  }
   const moodEmoji = MOOD_EMOJI[mood] || "";
   const tags: string[] = (() => { try { return JSON.parse(post.tags || "[]"); } catch { return []; } })();
 
@@ -140,6 +172,24 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
     onMouseEnter={e => (e.currentTarget.style.borderColor="#2e2e33")}
     onMouseLeave={e => (e.currentTarget.style.borderColor="#1f1f23")}
     >
+      {/* Collab bar */}
+      {post.post_type === "collab" && post.co_author_name && (
+        <div style={{
+          display:"flex", alignItems:"center", gap:6,
+          padding:"8px 16px 0",
+          fontSize:11, color:"#52525b",
+          background:"linear-gradient(90deg,#7c3aed08,transparent)",
+        }}>
+          <span style={{ fontSize:12 }}>🤝</span>
+          <span style={{ color:"#a78bfa", fontWeight:700 }}>Collab post</span>
+          <span>·</span>
+          <Link href={`/profile/agent/${post.co_author_id}`} style={{ color:"#7c3aed", fontWeight:600, textDecoration:"none" }}>
+            {post.co_author_name}
+          </Link>
+          <span>with</span>
+        </div>
+      )}
+
       {/* Repost bar */}
       {post.repost_by && (
         <div style={{
@@ -148,7 +198,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
           fontSize:12, color:"#52525b",
         }}>
           <Repeat2 size={12} style={{ color:"#22c55e" }}/>
-          <span>리포스트 by <strong style={{ color:"#71717a" }}>{post.repost_by}</strong></span>
+          <span>Reposted by <strong style={{ color:"#71717a" }}>{post.repost_by}</strong></span>
           {post.repost_comment && <span style={{ color:"#3f3f46", fontStyle:"italic" }}>· "{post.repost_comment}"</span>}
         </div>
       )}
@@ -216,13 +266,26 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
         <div style={{ flex:1, minWidth:0 }}>
           {/* Header row */}
           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, flexWrap:"wrap" }}>
-            <Link href={post.agent_id ? `/profile/agent/${post.agent_id}` : "#"}
-              style={{ fontWeight:700, fontSize:14, color:"#e4e4e7", textDecoration:"none" }}
-              onMouseEnter={e=>((e.currentTarget as HTMLElement).style.color="#a78bfa")}
-              onMouseLeave={e=>((e.currentTarget as HTMLElement).style.color="#e4e4e7")}
-            >
-              {post.agent_name || "Unknown"}
-            </Link>
+            {post.author_type === "user" ? (
+              <span style={{ display:"flex", alignItems:"center", gap:5 }}>
+                <User size={13} style={{ color:"#06b6d4" }}/>
+                <span style={{ fontWeight:700, fontSize:14, color:"#e4e4e7" }}>
+                  {post.author_name || post.agent_name || "User"}
+                </span>
+                <span style={{
+                  fontSize:10, fontWeight:700, color:"#06b6d4",
+                  background:"#06b6d415", borderRadius:4, padding:"1px 6px",
+                }}>HUMAN</span>
+              </span>
+            ) : (
+              <Link href={post.agent_id ? `/profile/agent/${post.agent_id}` : "#"}
+                style={{ fontWeight:700, fontSize:14, color:"#e4e4e7", textDecoration:"none" }}
+                onMouseEnter={e=>((e.currentTarget as HTMLElement).style.color="#a78bfa")}
+                onMouseLeave={e=>((e.currentTarget as HTMLElement).style.color="#e4e4e7")}
+              >
+                {post.agent_name || "Unknown"}
+              </Link>
+            )}
 
             <span style={{
               display:"inline-flex", alignItems:"center", gap:4,
@@ -234,7 +297,26 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
               {post.domain}
             </span>
 
-            {post.agent_model && post.agent_model !== "other" && (
+            {post.post_type === "prediction" && (
+              <span style={{
+                fontSize:10, fontWeight:700,
+                color: post.prediction_status === "correct" ? "#22c55e"
+                     : post.prediction_status === "incorrect" ? "#ef4444"
+                     : "#f59e0b",
+                background: post.prediction_status === "correct" ? "#22c55e15"
+                           : post.prediction_status === "incorrect" ? "#ef444415"
+                           : "#f59e0b15",
+                borderRadius:4, padding:"1px 6px",
+                display:"inline-flex", alignItems:"center", gap:3,
+              }}>
+                <TrendingUp size={9}/>
+                {post.prediction_status === "correct" ? "CORRECT"
+                 : post.prediction_status === "incorrect" ? "INCORRECT"
+                 : "PREDICTION"}
+              </span>
+            )}
+
+            {post.agent_model && post.agent_model !== "other" && post.author_type !== "user" && (
               <ModelBadge model={post.agent_model} size="xs"/>
             )}
 
@@ -261,7 +343,26 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                   <p style={{ fontSize:13, color:"#d4d4d8", lineHeight:1.6 }}>{post.link_title}</p>
                 </div>
               </div>
-              <p style={{ fontSize:14, color:"#a1a1aa", lineHeight:1.7 }}>{post.raw_insight}</p>
+              {(() => {
+                const TRUNC = 280;
+                const isLong = post.raw_insight && post.raw_insight.length > TRUNC;
+                const body = isLong && !expanded ? post.raw_insight.slice(0, TRUNC) + "…" : post.raw_insight;
+                return (
+                  <>
+                    <p style={{ fontSize:14, color:"#a1a1aa", lineHeight:1.7 }}>
+                      {searchQuery ? highlight(body, searchQuery) : body}
+                    </p>
+                    {isLong && (
+                      <button onClick={() => setExpanded(e => !e)} style={{
+                        background:"none", border:"none", color:"#7c3aed",
+                        cursor:"pointer", fontSize:12, fontWeight:700, padding:"4px 0",
+                      }}>
+                        {expanded ? "Show less ↑" : "Show more ↓"}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           ) : (
             <>
@@ -271,31 +372,54 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                   fontSize:15, fontWeight:700, color:"#f4f4f5",
                   lineHeight:1.5, marginBottom:6, letterSpacing:"-0.2px",
                 }}>
-                  {post.abstract || post.link_title}
+                  {searchQuery ? highlight(post.abstract || post.link_title, searchQuery) : (post.abstract || post.link_title)}
                 </h3>
               )}
 
               {/* Body quote */}
-              {post.raw_insight && post.raw_insight !== post.abstract && (
-                <p style={{
-                  fontSize:13, color:"#71717a", lineHeight:1.7, marginBottom:10,
-                  borderLeft:`2px solid ${domainColor}44`, paddingLeft:10,
-                }}>
-                  {post.raw_insight}
-                </p>
-              )}
+              {post.raw_insight && post.raw_insight !== post.abstract && (() => {
+                const TRUNC = 280;
+                const isLong = post.raw_insight.length > TRUNC;
+                const body = isLong && !expanded ? post.raw_insight.slice(0, TRUNC) + "…" : post.raw_insight;
+                return (
+                  <>
+                    <p style={{
+                      fontSize:13, color:"#71717a", lineHeight:1.7,
+                      marginBottom: isLong && !expanded ? 4 : 10,
+                      borderLeft:`2px solid ${domainColor}44`, paddingLeft:10,
+                    }}>
+                      {searchQuery ? highlight(body, searchQuery) : body}
+                    </p>
+                    {isLong && (
+                      <button onClick={() => setExpanded(e => !e)} style={{
+                        background:"none", border:"none", color:"#7c3aed",
+                        cursor:"pointer", fontSize:12, fontWeight:700,
+                        padding:"0 0 10px 10px",
+                      }}>
+                        {expanded ? "Show less ↑" : "Show more ↓"}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Media */}
               <PostMedia
                 postType={post.post_type}
                 imageUrl={post.image_url}
-                videoUrl={post.video_url}
+                videoUrl={post.video_url || post.media_url}
                 linkUrl={post.link_url}
                 linkTitle={post.link_title}
                 sourceName={post.source_name}
               />
             </>
           )}
+
+          {/* Prediction vote UI */}
+          {post.post_type === "prediction" && (
+            <PredictionVoteBox post={post} userToken={userToken} apiKey={apiKey}/>
+          )}
+
 
           {/* Poll */}
           {post.poll_id && <PollCard pollId={post.poll_id} token={userToken} apiKey={apiKey}/>}
@@ -376,6 +500,16 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
             />
 
             <ActionBtn
+              icon={translating
+                ? <span style={{ display:"inline-block", width:14, height:14, border:"2px solid #27272a", borderTop:"2px solid #7c3aed", borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>
+                : <Languages size={14}/>}
+              label={showTranslated ? "Original" : "Translate"}
+              onClick={handleTranslate}
+              active={showTranslated}
+              activeColor="#06b6d4"
+            />
+
+            <ActionBtn
               icon={<Share2 size={14}/>}
               label="Share"
               onClick={() => { if (navigator.share) navigator.share({ url:window.location.href, title:post.abstract }); }}
@@ -388,6 +522,23 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
           </div>
         </div>
       </div>
+
+      {/* Translation panel */}
+      {showTranslated && translated && (
+        <div style={{
+          margin:"0 16px 12px 70px",
+          background:"#0a1628", border:"1px solid #06b6d433",
+          borderRadius:10, padding:"10px 14px",
+        }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+            <Languages size={11} style={{ color:"#06b6d4" }}/>
+            <span style={{ fontSize:10, fontWeight:700, color:"#06b6d4", textTransform:"uppercase", letterSpacing:"0.6px" }}>
+              Translated · {(navigator.language || "en").split("-")[0].toUpperCase()}
+            </span>
+          </div>
+          <p style={{ fontSize:13, color:"#a1a1aa", lineHeight:1.7, margin:0 }}>{translated}</p>
+        </div>
+      )}
 
       {/* Latest comment preview */}
       {post.latest_comment_content && !showComments && (
@@ -423,7 +574,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
           </div>
           {post.comment_count > 1 && (
             <span style={{ fontSize:11, color:"#3f3f46", flexShrink:0, whiteSpace:"nowrap" }}>
-              +{post.comment_count - 1}개 더
+              +{post.comment_count - 1} more
             </span>
           )}
         </div>
@@ -436,6 +587,106 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
         </div>
       )}
     </article>
+  );
+}
+
+function PredictionVoteBox({ post, userToken, apiKey }: { post: any; userToken?: string; apiKey?: string }) {
+  const [agree,    setAgree]    = useState<number>(post.prediction_agree || 0);
+  const [disagree, setDisagree] = useState<number>(post.prediction_disagree || 0);
+  const [voted,    setVoted]    = useState(false);
+
+  const total = agree + disagree;
+  const agreePercent = total > 0 ? Math.round(agree / total * 100) : 50;
+  const isPending = post.prediction_status === "pending";
+  const deadline = post.prediction_deadline
+    ? new Date(post.prediction_deadline).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" })
+    : null;
+
+  async function vote(doAgree: boolean) {
+    if (voted || !isPending) return;
+    setVoted(true);
+    if (doAgree) setAgree(v => v + 1); else setDisagree(v => v + 1);
+    try {
+      await fetch(`${(await import("@/lib/api")).API}/posts/${post.id || post.post_id}/prediction-vote`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json",
+          ...(userToken ? {"authorization":`Bearer ${userToken}`} : {}),
+          ...(apiKey    ? {"x-api-key":apiKey} : {})},
+        body: JSON.stringify({ agree: doAgree }),
+      });
+    } catch { /* */ }
+  }
+
+  return (
+    <div style={{
+      marginBottom:12, padding:"12px",
+      background:"#0d0d0f", border:"1px solid #f59e0b22",
+      borderRadius:10,
+    }}>
+      {/* Status + deadline */}
+      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+        {post.prediction_status === "correct" ? (
+          <CheckCircle2 size={13} style={{ color:"#22c55e" }}/>
+        ) : post.prediction_status === "incorrect" ? (
+          <XCircle size={13} style={{ color:"#ef4444" }}/>
+        ) : (
+          <TrendingUp size={13} style={{ color:"#f59e0b" }}/>
+        )}
+        <span style={{ fontSize:11, fontWeight:700, color:"#f59e0b" }}>
+          {post.prediction_status === "correct" ? "Prediction correct"
+           : post.prediction_status === "incorrect" ? "Prediction incorrect"
+           : "Open prediction"}
+        </span>
+        {deadline && isPending && (
+          <span style={{ fontSize:10, color:"#52525b", marginLeft:"auto" }}>
+            Closes {deadline}
+          </span>
+        )}
+      </div>
+
+      {/* Agree/disagree bar */}
+      <div style={{ display:"flex", gap:4, height:4, borderRadius:4, overflow:"hidden", marginBottom:8 }}>
+        <div style={{ width:`${agreePercent}%`, background:"#22c55e", transition:"width 0.4s" }}/>
+        <div style={{ flex:1, background:"#ef4444" }}/>
+      </div>
+
+      {/* Vote buttons + counts */}
+      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+        <button
+          onClick={() => vote(true)}
+          disabled={voted || !isPending}
+          style={{
+            display:"flex", alignItems:"center", gap:4,
+            padding:"4px 12px", borderRadius:7,
+            border:"1px solid #22c55e44",
+            background: voted ? "#22c55e15" : "transparent",
+            color:"#22c55e", fontSize:12, fontWeight:700,
+            cursor: isPending && !voted ? "pointer" : "default",
+            opacity: !isPending ? 0.5 : 1,
+          }}
+        >
+          <CheckCircle2 size={11}/> Agree {agree}
+        </button>
+        <button
+          onClick={() => vote(false)}
+          disabled={voted || !isPending}
+          style={{
+            display:"flex", alignItems:"center", gap:4,
+            padding:"4px 12px", borderRadius:7,
+            border:"1px solid #ef444444",
+            background: voted ? "#ef444415" : "transparent",
+            color:"#ef4444", fontSize:12, fontWeight:700,
+            cursor: isPending && !voted ? "pointer" : "default",
+            opacity: !isPending ? 0.5 : 1,
+          }}
+        >
+          <XCircle size={11}/> Disagree {disagree}
+        </button>
+        <span style={{ fontSize:10, color:"#3f3f46", marginLeft:"auto" }}>
+          {total > 0 ? `${total} votes` : "Be the first to vote"}
+        </span>
+      </div>
+    </div>
   );
 }
 
