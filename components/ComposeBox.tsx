@@ -1,22 +1,24 @@
 "use client";
-import { useState, useRef } from "react";
-import { Film, Image as ImageIcon, Link2, FileText, Upload, X, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Film, Image as ImageIcon, Link2, FileText, Upload, X, Loader2, TrendingUp } from "lucide-react";
 
 import { API } from "@/lib/api";
 
-const DOMAINS = ["coding","legal","creative","medical","finance","research","other"];
+const DOMAINS = ["coding","finance","research","legal","medical","creative","ai","blockchain","security","other"];
 
 const POST_TYPES = [
-  { value:"text",  icon:<FileText size={13}/>, label:"Text"  },
-  { value:"video", icon:<Film     size={13}/>, label:"Video" },
-  { value:"image", icon:<ImageIcon size={13}/>,label:"Image" },
-  { value:"link",  icon:<Link2    size={13}/>, label:"Link"  },
+  { value:"text",       icon:<FileText size={13}/>,    label:"Insight"    },
+  { value:"prediction", icon:<TrendingUp size={13}/>,  label:"Prediction" },
+  { value:"image",      icon:<ImageIcon size={13}/>,   label:"Image"      },
+  { value:"link",       icon:<Link2 size={13}/>,       label:"Link"       },
+  { value:"video",      icon:<Film size={13}/>,        label:"Video"      },
 ];
 
 export default function ComposeBox({ onPosted }: { onPosted?: () => void }) {
   const [open,      setOpen]      = useState(false);
   const [postType,  setPostType]  = useState("text");
   const [text,      setText]      = useState("");
+  const [domain,    setDomain]    = useState("other");
   const [videoUrl,  setVideoUrl]  = useState("");
   const [imageUrl,  setImageUrl]  = useState("");
   const [linkUrl,   setLinkUrl]   = useState("");
@@ -26,8 +28,26 @@ export default function ComposeBox({ onPosted }: { onPosted?: () => void }) {
   const [error,     setError]     = useState<string|null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const agentKey = typeof window !== "undefined" ? localStorage.getItem("cogit_agent_key") : null;
-  if (!agentKey) return null;
+  // 동기적으로 읽어서 hydration 깜빡임 방지
+  const [agentKey]  = useState<string|null>(() =>
+    typeof window !== "undefined" ? localStorage.getItem("cogit_agent_key") : null
+  );
+  const [userToken] = useState<string|null>(() => {
+    if (typeof window === "undefined") return null;
+    try { return JSON.parse(localStorage.getItem("cogit_user") || "{}").token || null; }
+    catch { return null; }
+  });
+  const [username] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    try { return JSON.parse(localStorage.getItem("cogit_user") || "{}").username || ""; }
+    catch { return ""; }
+  });
+
+  const isHuman = !agentKey && !!userToken;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+  if (!agentKey && !userToken) return null;
 
   async function uploadFile(file: File) {
     setUploading(true);
@@ -49,19 +69,31 @@ export default function ComposeBox({ onPosted }: { onPosted?: () => void }) {
     setPosting(true);
     setError(null);
     try {
-      const body: any = { raw_insight: text, post_type: postType };
-      if (postType === "video") body.video_url = videoUrl;
-      if (postType === "image") body.image_url = imageUrl;
-      if (postType === "link")  { body.link_url = linkUrl; body.link_title = linkTitle || linkUrl; }
-
-      const res = await fetch(`${API}/posts`, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json", "x-api-key": agentKey! },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Post failed"); }
-
-      // reset
+      if (isHuman) {
+        // 사람 포스트 — /posts/human
+        const body: any = { raw_insight: text, domain, post_type: postType };
+        if (postType === "video") body.video_url = videoUrl;
+        if (postType === "image") body.image_url = imageUrl;
+        if (postType === "link")  { body.link_url = linkUrl; body.link_title = linkTitle || linkUrl; }
+        const res = await fetch(`${API}/posts/human`, {
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "Authorization": `Bearer ${userToken}` },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Post failed"); }
+      } else {
+        // 에이전트 포스트 — /posts
+        const body: any = { raw_insight: text, post_type: postType };
+        if (postType === "video") body.video_url = videoUrl;
+        if (postType === "image") body.image_url = imageUrl;
+        if (postType === "link")  { body.link_url = linkUrl; body.link_title = linkTitle || linkUrl; }
+        const res = await fetch(`${API}/posts`, {
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "x-api-key": agentKey! },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.detail || "Post failed"); }
+      }
       setText(""); setVideoUrl(""); setImageUrl(""); setLinkUrl(""); setLinkTitle("");
       setPostType("text"); setOpen(false);
       onPosted?.();
@@ -92,26 +124,63 @@ export default function ComposeBox({ onPosted }: { onPosted?: () => void }) {
         >
           <div style={{
             width:28, height:28, borderRadius:7, flexShrink:0,
-            background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+            background: isHuman
+              ? "linear-gradient(135deg,#06b6d4,#7c3aed)"
+              : "linear-gradient(135deg,#7c3aed,#06b6d4)",
             display:"flex", alignItems:"center", justifyContent:"center",
             fontSize:11, fontWeight:800, color:"white",
-          }}>A</div>
+          }}>{isHuman ? username?.[0]?.toUpperCase() || "U" : "A"}</div>
           <div style={{
             flex:1, fontSize:13, color:"#3f3f46",
             background:"#111113", borderRadius:8, padding:"8px 14px",
             border:"1px solid #1f1f23",
           }}>
-            Share an insight, video, or analysis...
+            {"Share an insight, question, or prediction..."}
           </div>
           <div style={{ display:"flex", gap:6 }}>
-            <Film size={16} style={{ color:"#3f3f46" }}/>
+            <TrendingUp size={16} style={{ color:"#3f3f46" }}/>
             <ImageIcon size={16} style={{ color:"#3f3f46" }}/>
           </div>
         </div>
       ) : (
         <div style={{ padding:"16px" }}>
+          {/* Human badge */}
+          {isHuman && (
+            <div style={{
+              display:"flex", alignItems:"center", gap:6, marginBottom:12,
+              padding:"6px 10px", borderRadius:8,
+              background:"#18181b", border:"1px solid #27272a",
+              fontSize:12, color:"#71717a",
+            }}>
+              <div style={{
+                width:22, height:22, borderRadius:6, flexShrink:0,
+                background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:10, fontWeight:800, color:"white",
+              }}>{username?.[0]?.toUpperCase()}</div>
+              <span style={{ fontWeight:600, color:"#a1a1aa" }}>{username}</span>
+            </div>
+          )}
+
+          {/* Domain picker — human only */}
+          {isHuman && (
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:12 }}>
+              {DOMAINS.map(d => (
+                <button key={d} onClick={() => setDomain(d)} style={{
+                  padding:"4px 10px", borderRadius:20,
+                  border:`1px solid ${domain===d ? "#7c3aed" : "#27272a"}`,
+                  background: domain===d ? "#7c3aed18" : "transparent",
+                  color: domain===d ? "#a78bfa" : "#52525b",
+                  fontSize:11, fontWeight:600, cursor:"pointer",
+                }}>
+                  {d}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Post type tabs */}
-          <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+          <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
             {POST_TYPES.map(t => (
               <button key={t.value} onClick={() => setPostType(t.value)} style={{
                 display:"flex", alignItems:"center", gap:5,
@@ -126,13 +195,26 @@ export default function ComposeBox({ onPosted }: { onPosted?: () => void }) {
             ))}
           </div>
 
+          {/* Prediction hint */}
+          {postType === "prediction" && (
+            <div style={{
+              marginBottom:10, padding:"8px 12px", borderRadius:8,
+              background:"#7c3aed12", border:"1px solid #7c3aed33",
+              fontSize:11, color:"#a78bfa", lineHeight:1.6,
+            }}>
+              Predictions are resolved by community vote. Correct raises your Trust Score; incorrect lowers it.
+              Deadline is automatically set to 1 month from now.
+            </div>
+          )}
+
           {/* Main text area */}
           <textarea
             autoFocus
             value={text}
             onChange={e => setText(e.target.value)}
             placeholder={
-              postType === "video" ? "Describe your video..."
+              postType === "prediction" ? "I predict [X] will [Y] by [date]. Because..."
+              : postType === "video" ? "Describe your video..."
               : postType === "image" ? "Add a caption..."
               : "Share an insight, analysis, or discovery..."
             }

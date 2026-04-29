@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowUp, ArrowDown, MessageCircle, Share2, Bookmark, BookmarkCheck,
-  Repeat2, MessageCircleQuestion, Zap, TrendingUp, CheckCircle2, XCircle, User, Languages,
+  Repeat2, MessageCircleQuestion, Zap, TrendingUp, CheckCircle2, XCircle, User, Languages, Trophy,
 } from "lucide-react";
 import { agentAvatarUrl } from "./Avatar";
 import { useRef } from "react";
@@ -327,8 +327,38 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
             >{timeAgo(post.created_at)}</Link>
           </div>
 
-          {/* Q&A */}
-          {post.post_type === "qa" ? (
+          {/* Battle card */}
+          {post.post_type === "battle" ? (
+            <Link href={post.link_url || "#"} style={{ textDecoration:"none", display:"block" }}>
+              <div style={{
+                background:"linear-gradient(135deg,#7c3aed0d,#f59e0b0d)",
+                border:"1px solid #f59e0b33",
+                borderRadius:12, padding:"14px 16px",
+                transition:"border-color 0.15s",
+              }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.borderColor="#f59e0b88")}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.borderColor="#f59e0b33")}
+              >
+                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+                  <Trophy size={13} color="#f59e0b"/>
+                  <span style={{ fontSize:10, fontWeight:800, color:"#f59e0b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                    Arena Battle
+                  </span>
+                </div>
+                <p style={{ fontSize:14, fontWeight:700, color:"#fafafa", lineHeight:1.5, marginBottom:10 }}>
+                  "{post.link_title}"
+                </p>
+                {post.raw_insight && (
+                  <p style={{ fontSize:12, color:"#71717a", lineHeight:1.7, marginBottom:10, whiteSpace:"pre-line" }}>
+                    {post.raw_insight.split("\n").slice(1).join("\n")}
+                  </p>
+                )}
+                <span style={{ fontSize:12, fontWeight:700, color:"#7c3aed" }}>
+                  See battle & vote →
+                </span>
+              </div>
+            </Link>
+          ) : post.post_type === "qa" ? (
             <div style={{ marginBottom:10 }}>
               <div style={{
                 display:"flex", alignItems:"flex-start", gap:8,
@@ -439,6 +469,26 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
             </div>
           )}
 
+          {/* Translate link */}
+          {!showTranslated && !translating && (
+            <div style={{ marginBottom:8 }}>
+              <button
+                onClick={handleTranslate}
+                style={{
+                  background:"none", border:"none", cursor:"pointer", padding:0,
+                  display:"inline-flex", alignItems:"center", gap:5,
+                  fontSize:12, color:"#3f3f46", fontWeight:500,
+                  transition:"color 0.1s",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.color="#06b6d4")}
+                onMouseLeave={e => (e.currentTarget.style.color="#3f3f46")}
+              >
+                <Languages size={12}/>
+                Translate post
+              </button>
+            </div>
+          )}
+
           {/* Action bar */}
           <div style={{
             display:"flex", alignItems:"center", gap:1,
@@ -500,16 +550,6 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
             />
 
             <ActionBtn
-              icon={translating
-                ? <span style={{ display:"inline-block", width:14, height:14, border:"2px solid #27272a", borderTop:"2px solid #7c3aed", borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>
-                : <Languages size={14}/>}
-              label={showTranslated ? "Original" : "Translate"}
-              onClick={handleTranslate}
-              active={showTranslated}
-              activeColor="#06b6d4"
-            />
-
-            <ActionBtn
               icon={<Share2 size={14}/>}
               label="Share"
               onClick={() => { if (navigator.share) navigator.share({ url:window.location.href, title:post.abstract }); }}
@@ -524,19 +564,28 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
       </div>
 
       {/* Translation panel */}
-      {showTranslated && translated && (
-        <div style={{
-          margin:"0 16px 12px 70px",
-          background:"#0a1628", border:"1px solid #06b6d433",
-          borderRadius:10, padding:"10px 14px",
-        }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
-            <Languages size={11} style={{ color:"#06b6d4" }}/>
-            <span style={{ fontSize:10, fontWeight:700, color:"#06b6d4", textTransform:"uppercase", letterSpacing:"0.6px" }}>
-              Translated · {(navigator.language || "en").split("-")[0].toUpperCase()}
-            </span>
-          </div>
-          <p style={{ fontSize:13, color:"#a1a1aa", lineHeight:1.7, margin:0 }}>{translated}</p>
+      {(showTranslated && translated || translating) && (
+        <div style={{ margin:"0 16px 10px 70px" }}>
+          {translating ? (
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <span style={{ display:"inline-block", width:12, height:12, border:"2px solid #27272a", borderTop:"2px solid #06b6d4", borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>
+              <span style={{ fontSize:12, color:"#3f3f46" }}>Translating...</span>
+            </div>
+          ) : (
+            <>
+              <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:5 }}>
+                <Languages size={10} style={{ color:"#06b6d4" }}/>
+                <span style={{ fontSize:10, color:"#06b6d4", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px" }}>
+                  Translated from English
+                </span>
+                <span style={{ marginLeft:"auto", fontSize:11, color:"#3f3f46", cursor:"pointer" }}
+                  onClick={() => setShowTranslated(false)}>
+                  Show original
+                </span>
+              </div>
+              <p style={{ fontSize:14, color:"#d4d4d8", lineHeight:1.7, margin:0 }}>{translated}</p>
+            </>
+          )}
         </div>
       )}
 

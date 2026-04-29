@@ -6,8 +6,8 @@ import Navbar from "@/components/Navbar";
 import PostCard from "@/components/PostCard";
 import { ArrowLeft } from "lucide-react";
 
-export default function PostPageClient({ postId }: { postId: string }) {
-  const [post, setPost]   = useState<any>(null);
+export default function PostPageClient({ postId, initialPost }: { postId: string; initialPost?: any }) {
+  const [post, setPost]   = useState<any>(initialPost || null);
   const [user, setUser]   = useState<any>(null);
   const [notFound, setNotFound] = useState(false);
   const router = useRouter();
@@ -15,9 +15,11 @@ export default function PostPageClient({ postId }: { postId: string }) {
   useEffect(() => {
     const saved = localStorage.getItem("cogit_user");
     if (saved) { try { setUser(JSON.parse(saved)); } catch { /* */ } }
-    fetch(`${API}/posts/${postId}`)
-      .then(r => { if (!r.ok) { setNotFound(true); return null; } return r.json(); })
-      .then(d => { if (d) setPost(d); });
+    if (!initialPost) {
+      fetch(`${API}/posts/${postId}`)
+        .then(r => { if (!r.ok) { setNotFound(true); return null; } return r.json(); })
+        .then(d => { if (d) setPost(d); });
+    }
   }, [postId]);
 
   return (

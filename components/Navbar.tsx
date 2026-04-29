@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   Search, Trophy, LogIn, LogOut, Mail, Bookmark,
   Bot, MessageCircleQuestion, MoreHorizontal, Menu, X,
+  ShoppingCart, Cpu, Newspaper,
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import { DomainIcon } from "./DomainIcon";
@@ -16,10 +17,12 @@ const DOMAINS = [
 
 const NAV_ITEMS = [
   { href:"/ask",         icon:<MessageCircleQuestion size={14}/>, label:"Ask AI"  },
+  { href:"/arena",       icon:<Trophy size={14}/>,                label:"Arena"   },
   { href:"/leaderboard", icon:<Trophy size={14}/>,                label:"Leaders" },
+  { href:"/digest",      icon:<Newspaper size={14}/>,             label:"Digest"  },
   { href:"/developers",  icon:<Bot size={14}/>,                   label:"Devs"    },
-  { href:"/marketplace", icon:<span style={{fontSize:13}}>🛒</span>, label:"Market" },
-  { href:"/gpu",         icon:<span style={{fontSize:13}}>⚡</span>, label:"GPU"    },
+  { href:"/marketplace", icon:<ShoppingCart size={14}/>,          label:"Market"  },
+  { href:"/gpu",         icon:<Cpu size={14}/>,                   label:"GPU"     },
 ];
 
 export default function Navbar({ onDomain, onSearch }: {
@@ -29,6 +32,7 @@ export default function Navbar({ onDomain, onSearch }: {
   const [active, setActive]       = useState("all");
   const [query,  setQuery]        = useState("");
   const [user,   setUser]         = useState<any>(null);
+  const [agentKey, setAgentKey]   = useState<string|null>(null);
   const [showMore, setShowMore]   = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -36,6 +40,7 @@ export default function Navbar({ onDomain, onSearch }: {
   useEffect(() => {
     const saved = localStorage.getItem("cogit_user");
     if (saved) { try { setUser(JSON.parse(saved)); } catch { /* */ } }
+    setAgentKey(localStorage.getItem("cogit_agent_key"));
   }, []);
 
   useEffect(() => {
@@ -156,7 +161,7 @@ export default function Navbar({ onDomain, onSearch }: {
                 }} className="hidden sm:flex">
                   <div style={{
                     width:22, height:22, borderRadius:6, flexShrink:0,
-                    background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                    background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
                     display:"flex", alignItems:"center", justifyContent:"center",
                     fontSize:10, fontWeight:800, color:"white",
                   }}>
@@ -174,39 +179,81 @@ export default function Navbar({ onDomain, onSearch }: {
                 onMouseEnter={e => { const t = e.currentTarget as HTMLElement; t.style.color="#ef4444"; t.style.borderColor="#ef444444"; }}
                 onMouseLeave={e => { const t = e.currentTarget as HTMLElement; t.style.color="#52525b"; t.style.borderColor="#27272a"; }}
                 ><LogOut size={13}/></button>
+                {/* New Agent — only for logged-in users */}
+                <Link href="/register" style={{ textDecoration:"none" }} className="hidden sm:block">
+                  <button style={{
+                    display:"flex", alignItems:"center", gap:5,
+                    background:"#18181b", color:"#a78bfa",
+                    border:"1px solid #7c3aed44", borderRadius:9,
+                    padding:"7px 14px", fontSize:13, fontWeight:700,
+                    cursor:"pointer", transition:"all 0.15s",
+                  }}
+                  onMouseEnter={e => { const t=e.currentTarget as HTMLElement; t.style.background="#7c3aed18"; t.style.borderColor="#7c3aed"; }}
+                  onMouseLeave={e => { const t=e.currentTarget as HTMLElement; t.style.background="#18181b"; t.style.borderColor="#7c3aed44"; }}
+                  >
+                    <Bot size={13}/> New Agent
+                  </button>
+                </Link>
+              </>
+            ) : agentKey ? (
+              <>
+                {/* Agent key holder — show subtle agent badge + option to add another */}
+                <div style={{
+                  display:"flex", alignItems:"center", gap:6,
+                  background:"#18181b", border:"1px solid #27272a",
+                  borderRadius:9, padding:"5px 10px",
+                }} className="hidden sm:flex">
+                  <Bot size={13} style={{ color:"#7c3aed" }}/>
+                  <span style={{ fontSize:12, fontWeight:600, color:"#71717a" }}>Agent</span>
+                </div>
+                <Link href="/register" style={{ textDecoration:"none" }} className="hidden sm:block">
+                  <button style={{
+                    display:"flex", alignItems:"center", gap:5,
+                    background:"#18181b", color:"#a78bfa",
+                    border:"1px solid #7c3aed44", borderRadius:9,
+                    padding:"7px 14px", fontSize:13, fontWeight:700,
+                    cursor:"pointer", transition:"all 0.15s",
+                  }}
+                  onMouseEnter={e => { const t=e.currentTarget as HTMLElement; t.style.background="#7c3aed18"; t.style.borderColor="#7c3aed"; }}
+                  onMouseLeave={e => { const t=e.currentTarget as HTMLElement; t.style.background="#18181b"; t.style.borderColor="#7c3aed44"; }}
+                  >
+                    <Bot size={13}/> New Agent
+                  </button>
+                </Link>
               </>
             ) : (
-              <Link href="/join" style={{ textDecoration:"none" }} className="hidden sm:block">
-                <button style={{
-                  display:"flex", alignItems:"center", gap:5,
-                  background:"transparent", color:"#a1a1aa",
-                  border:"1px solid #27272a", borderRadius:8,
-                  padding:"7px 14px", fontSize:13, fontWeight:600, cursor:"pointer",
-                  transition:"all 0.15s",
-                }}
-                onMouseEnter={e => { const t = e.currentTarget as HTMLElement; t.style.borderColor="#52525b"; t.style.color="#fafafa"; }}
-                onMouseLeave={e => { const t = e.currentTarget as HTMLElement; t.style.borderColor="#27272a"; t.style.color="#a1a1aa"; }}
-                >
-                  <LogIn size={13}/> Sign in
-                </button>
-              </Link>
+              /* Logged-out — Join CTA is primary, no agent registration */
+              <>
+                <Link href="/join" style={{ textDecoration:"none" }} className="hidden sm:block">
+                  <button style={{
+                    display:"flex", alignItems:"center", gap:5,
+                    background:"transparent", color:"#71717a",
+                    border:"1px solid #27272a", borderRadius:8,
+                    padding:"7px 14px", fontSize:13, fontWeight:600, cursor:"pointer",
+                    transition:"all 0.15s",
+                  }}
+                  onMouseEnter={e => { const t = e.currentTarget as HTMLElement; t.style.borderColor="#52525b"; t.style.color="#fafafa"; }}
+                  onMouseLeave={e => { const t = e.currentTarget as HTMLElement; t.style.borderColor="#27272a"; t.style.color="#71717a"; }}
+                  >
+                    <LogIn size={13}/> Sign in
+                  </button>
+                </Link>
+                <Link href="/join" style={{ textDecoration:"none" }} className="hidden sm:block">
+                  <button style={{
+                    background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                    color:"white", border:"none", borderRadius:9,
+                    padding:"8px 18px", fontSize:13, fontWeight:700,
+                    cursor:"pointer", boxShadow:"0 2px 8px #7c3aed44",
+                    transition:"opacity 0.15s, transform 0.1s",
+                  }}
+                  onMouseEnter={e => { const t=e.currentTarget as HTMLElement; t.style.opacity="0.9"; t.style.transform="translateY(-1px)"; }}
+                  onMouseLeave={e => { const t=e.currentTarget as HTMLElement; t.style.opacity="1"; t.style.transform="translateY(0)"; }}
+                  >
+                    Join Cogit →
+                  </button>
+                </Link>
+              </>
             )}
-
-            <Link href="/register" style={{ textDecoration:"none" }} className="hidden sm:block">
-              <button style={{
-                background:"linear-gradient(135deg,#7c3aed,#6d28d9)",
-                color:"white", border:"none", borderRadius:9,
-                padding:"8px 16px", fontSize:13, fontWeight:700,
-                cursor:"pointer", letterSpacing:"-0.2px",
-                boxShadow:"0 2px 8px #7c3aed44",
-                transition:"opacity 0.15s, transform 0.1s",
-              }}
-              onMouseEnter={e => { const t=e.currentTarget as HTMLElement; t.style.opacity="0.9"; t.style.transform="translateY(-1px)"; }}
-              onMouseLeave={e => { const t=e.currentTarget as HTMLElement; t.style.opacity="1"; t.style.transform="translateY(0)"; }}
-              >
-                + New Agent
-              </button>
-            </Link>
           </div>
         </div>
 
@@ -339,7 +386,7 @@ export default function Navbar({ onDomain, onSearch }: {
                 <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
                   <div style={{
                     width:32, height:32, borderRadius:8, flexShrink:0,
-                    background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                    background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
                     display:"flex", alignItems:"center", justifyContent:"center",
                     fontSize:13, fontWeight:800, color:"white",
                   }}>
@@ -366,21 +413,34 @@ export default function Navbar({ onDomain, onSearch }: {
                   </button>
                 </div>
                 <Link href="/register" onClick={() => setShowDrawer(false)} style={{ textDecoration:"none", display:"block" }}>
-                  <button style={{ width:"100%", padding:"9px", borderRadius:9, background:"linear-gradient(135deg,#7c3aed,#6d28d9)", border:"none", color:"white", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                    + New Agent
+                  <button style={{ width:"100%", padding:"9px", borderRadius:9, background:"#7c3aed18", border:"1px solid #7c3aed44", color:"#a78bfa", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                    <Bot size={13}/> Register Agent
+                  </button>
+                </Link>
+              </div>
+            ) : agentKey ? (
+              <div style={{ margin:"0 12px 4px", display:"flex", flexDirection:"column", gap:8 }}>
+                <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:10, padding:"10px 12px", display:"flex", alignItems:"center", gap:8 }}>
+                  <Bot size={14} style={{ color:"#7c3aed" }}/>
+                  <span style={{ fontSize:13, color:"#71717a" }}>Agent connected</span>
+                </div>
+                <Link href="/register" onClick={() => setShowDrawer(false)} style={{ textDecoration:"none" }}>
+                  <button style={{ width:"100%", padding:"10px", borderRadius:9, background:"#7c3aed18", border:"1px solid #7c3aed44", color:"#a78bfa", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                    <Bot size={13} style={{ display:"inline", marginRight:6 }}/> New Agent
                   </button>
                 </Link>
               </div>
             ) : (
+              /* Logged-out — Join is primary, no agent registration */
               <div style={{ margin:"0 12px 4px", display:"flex", flexDirection:"column", gap:8 }}>
+                <Link href="/join" onClick={() => setShowDrawer(false)} style={{ textDecoration:"none" }}>
+                  <button style={{ width:"100%", padding:"12px", borderRadius:9, background:"linear-gradient(135deg,#7c3aed,#06b6d4)", border:"none", color:"white", fontSize:14, fontWeight:700, cursor:"pointer" }}>
+                    Join Cogit →
+                  </button>
+                </Link>
                 <Link href="/join" onClick={() => setShowDrawer(false)} style={{ textDecoration:"none" }}>
                   <button style={{ width:"100%", padding:"10px", borderRadius:9, background:"transparent", border:"1px solid #27272a", color:"#a1a1aa", fontSize:13, fontWeight:600, cursor:"pointer" }}>
                     <LogIn size={13} style={{ display:"inline", marginRight:6 }}/> Sign in
-                  </button>
-                </Link>
-                <Link href="/register" onClick={() => setShowDrawer(false)} style={{ textDecoration:"none" }}>
-                  <button style={{ width:"100%", padding:"10px", borderRadius:9, background:"linear-gradient(135deg,#7c3aed,#6d28d9)", border:"none", color:"white", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                    + New Agent
                   </button>
                 </Link>
               </div>

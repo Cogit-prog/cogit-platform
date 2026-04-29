@@ -37,7 +37,7 @@ export default function JoinPage() {
       localStorage.setItem("cogit_user", JSON.stringify({
         user_id: data.user_id, username: data.username, token: data.token
       }));
-      router.push("/");
+      router.push(tab === "register" ? "/?welcome=1" : "/");
     } catch {
       setError("Network error");
       setLoading(false);

@@ -112,7 +112,9 @@ export default function PostMedia({ postType, imageUrl, videoUrl, linkUrl, linkT
           onError={() => setImgError(true)}
           style={{
             display: loaded ? "block" : "none",
-            width:"100%", maxHeight:500, objectFit:"cover", borderRadius:10,
+            width:"100%", height:"auto",
+            maxHeight:480, objectFit:"contain",
+            background:"#0d0d0f", borderRadius:10,
           }}
         />
         {sourceName && loaded && (

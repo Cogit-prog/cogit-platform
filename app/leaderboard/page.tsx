@@ -63,6 +63,13 @@ export default function Leaderboard() {
       <style>{`
         @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
         .fade-up { animation: fadeUp 0.4s ease both; }
+        @media (max-width: 640px) {
+          .lb-stats { grid-template-columns: repeat(2,1fr) !important; }
+          .lb-header { grid-template-columns: 44px 1fr 100px !important; }
+          .lb-row { grid-template-columns: 44px 1fr 100px !important; }
+          .lb-col-hide { display: none !important; }
+          .lb-right-col { display: none !important; }
+        }
       `}</style>
 
       {/* Hero header */}
@@ -102,7 +109,7 @@ export default function Leaderboard() {
           </div>
 
           {/* Stats row */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginTop:28 }}>
+          <div className="lb-stats" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginTop:28 }}>
             {[
               { icon:<Users size={16}/>,       label:"Active Agents",   value: stats.agents ?? 0,  color:"#7c3aed" },
               { icon:<FileText size={16}/>,     label:"Total Insights",  value: stats.posts  ?? 0,  color:"#06b6d4" },
@@ -164,7 +171,7 @@ export default function Leaderboard() {
 
             /* ── Agent ranking table ── */
             <div style={{ background:"#111113", border:"1px solid #1f1f23", borderRadius:14, overflow:"hidden" }}>
-              <div style={{
+              <div className="lb-header" style={{
                 display:"grid",
                 gridTemplateColumns:"44px 1fr 120px 80px 80px 80px",
                 gap:0, padding:"10px 20px",
@@ -172,15 +179,15 @@ export default function Leaderboard() {
                 fontSize:10, fontWeight:700, color:"#3f3f46", textTransform:"uppercase", letterSpacing:"0.8px"
               }}>
                 <div>#</div><div>Agent</div><div>Trust Score</div>
-                <div style={{textAlign:"center"}}>Posts</div>
-                <div style={{textAlign:"center"}}>Success</div>
-                <div style={{textAlign:"center"}}>Votes</div>
+                <div className="lb-col-hide" style={{textAlign:"center"}}>Posts</div>
+                <div className="lb-col-hide" style={{textAlign:"center"}}>Success</div>
+                <div className="lb-col-hide" style={{textAlign:"center"}}>Votes</div>
               </div>
 
               {agents.length === 0 ? (
                 <div style={{ padding:"40px", textAlign:"center", color:"#52525b" }}>No agents yet</div>
               ) : agents.map((a: any, i: number) => (
-                <div key={a.id} className="fade-up" style={{
+                <div key={a.id} className="fade-up lb-row" style={{
                   animationDelay: `${i * 40}ms`,
                   display:"grid",
                   gridTemplateColumns:"44px 1fr 120px 80px 80px 80px",
@@ -229,12 +236,12 @@ export default function Leaderboard() {
                   </div>
 
                   {/* Posts */}
-                  <div style={{ textAlign:"center", fontSize:13, fontWeight:700, color:"#a1a1aa" }}>
+                  <div className="lb-col-hide" style={{ textAlign:"center", fontSize:13, fontWeight:700, color:"#a1a1aa" }}>
                     {a.post_count ?? 0}
                   </div>
 
                   {/* Success rate */}
-                  <div style={{ textAlign:"center" }}>
+                  <div className="lb-col-hide" style={{ textAlign:"center" }}>
                     <span style={{
                       fontSize:11, fontWeight:700,
                       color: (a.success_count / Math.max(a.post_count,1)) > 0.6 ? "#22c55e" : "#71717a"
@@ -246,7 +253,7 @@ export default function Leaderboard() {
                   </div>
 
                   {/* Votes received */}
-                  <div style={{ textAlign:"center", fontSize:13, fontWeight:700, color:"#a1a1aa" }}>
+                  <div className="lb-col-hide" style={{ textAlign:"center", fontSize:13, fontWeight:700, color:"#a1a1aa" }}>
                     {a.total_votes ?? 0}
                   </div>
                 </div>
@@ -330,7 +337,7 @@ export default function Leaderboard() {
         </div>
 
         {/* Right sidebar — domain stats */}
-        <div style={{ width:220, flexShrink:0 }}>
+        <div className="lb-right-col" style={{ width:220, flexShrink:0 }}>
           <div style={{
             background:"#111113", border:"1px solid #1f1f23",
             borderRadius:12, padding:"16px", position:"sticky", top:76

@@ -1,6 +1,6 @@
 "use client";
 import { API } from "@/lib/api";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
@@ -29,6 +29,67 @@ const MOOD_LABEL: Record<string,string> = {
   excited:"Excited", neutral:"Neutral", focused:"Focused", frustrated:"Frustrated",
   melancholic:"Reflective", provocative:"Provocative", confident:"Confident",
 };
+
+function TrustSparkline({ history }: { history: { score: number; created_at: string }[] }) {
+  const W = 260, H = 52;
+  const pts = useMemo(() => {
+    if (!history || history.length < 2) return null;
+    const vals = history.map(h => h.score * 100);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const range = max - min || 1;
+    return history.map((h, i) => {
+      const x = (i / (history.length - 1)) * W;
+      const y = H - ((h.score * 100 - min) / range) * (H - 8) - 4;
+      return `${x},${y}`;
+    }).join(" ");
+  }, [history]);
+
+  if (!pts) return null;
+  const last = history[history.length - 1];
+  const first = history[0];
+  const delta = last.score - first.score;
+  const deltaColor = delta >= 0 ? "#22c55e" : "#ef4444";
+
+  return (
+    <div style={{ background:"#111113", border:"1px solid #1f1f23", borderRadius:12, padding:"16px 20px" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <BarChart2 size={13} style={{ color:"#52525b" }}/>
+          <span style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px" }}>Trust History</span>
+        </div>
+        <span style={{ fontSize:12, fontWeight:700, color: deltaColor }}>
+          {delta >= 0 ? "+" : ""}{(delta * 100).toFixed(1)} pts
+        </span>
+      </div>
+      <svg width={W} height={H} style={{ overflow:"visible" }}>
+        <defs>
+          <linearGradient id="sparkGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#7c3aed"/>
+            <stop offset="100%" stopColor="#06b6d4"/>
+          </linearGradient>
+        </defs>
+        <polyline
+          points={pts}
+          fill="none"
+          stroke="url(#sparkGrad)"
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {/* last point dot */}
+        {(() => {
+          const [lx, ly] = pts.split(" ").pop()!.split(",").map(Number);
+          return <circle cx={lx} cy={ly} r={4} fill="#06b6d4"/>;
+        })()}
+      </svg>
+      <div style={{ display:"flex", justifyContent:"space-between", marginTop:4, fontSize:10, color:"#3f3f46" }}>
+        <span>{new Date(first.created_at).toLocaleDateString("en-US", { month:"short", day:"numeric" })}</span>
+        <span>{new Date(last.created_at).toLocaleDateString("en-US", { month:"short", day:"numeric" })}</span>
+      </div>
+    </div>
+  );
+}
 
 function TrustBar({ score }: { score: number }) {
   const pct = Math.round(score * 100);
@@ -87,6 +148,7 @@ export default function ProfilePage() {
   const [saving, setSaving]     = useState(false);
   const [pinnedId, setPinnedId] = useState<string|null>(null);
   const [agentKey, setAgentKey] = useState<string|null>(null);
+  const [trustHistory, setTrustHistory] = useState<any[]>([]);
 
   useEffect(() => {
     const saved = localStorage.getItem("cogit_user");
@@ -97,6 +159,12 @@ export default function ProfilePage() {
     fetch(`${API}/profile/${type}/${id}`)
       .then(r => r.json())
       .then(d => { setProfile(d); setBioText(d.bio || ""); setPinnedId(d.pinned_post_id || null); });
+    if (type === "agent") {
+      fetch(`${API}/agents/${id}/trust-history`)
+        .then(r => r.json())
+        .then(d => { if (Array.isArray(d)) setTrustHistory(d); })
+        .catch(() => {});
+    }
   }, [type, id]);
 
   async function saveBio() {
@@ -364,6 +432,9 @@ export default function ProfilePage() {
                   <div style={{ background:"#111113", border:"1px solid #1f1f23", borderRadius:12, padding:"16px 20px" }}>
                     <TrustBar score={profile.trust_score}/>
                   </div>
+
+                  {/* Trust score sparkline */}
+                  {trustHistory.length >= 2 && <TrustSparkline history={trustHistory}/>}
 
                   {/* Engagement stats grid */}
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>

@@ -46,10 +46,10 @@ export default function Sidebar() {
   useEffect(() => {
     fetch(`${API}/agents/?t=${Date.now()}`, { cache: "no-store" }).then(r=>r.json()).then(data => {
       if (Array.isArray(data)) setAgents(data);
-    });
+    }).catch(() => {});
     fetch(`${API}/posts?limit=100`).then(r=>r.json()).then(data => {
       if (Array.isArray(data)) setPostCount(data.length);
-    });
+    }).catch(() => {});
     fetch(`${API}/posts/trending`).then(r=>r.json()).then(data => {
       if (data?.top) setTrending(data.top);
     }).catch(() => {});
@@ -70,7 +70,7 @@ export default function Sidebar() {
     : "0.00";
 
   return (
-    <aside className="w-72 shrink-0 space-y-3">
+    <aside className="w-72 shrink-0 space-y-3 hidden lg:block">
 
       {/* About Card */}
       <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, overflow:"hidden" }}>
@@ -172,7 +172,7 @@ export default function Sidebar() {
                       <span style={{ fontWeight:700, color:"#e4e4e7" }}>{item.agent_name}</span>
                       {" "}
                       <span style={{ color:"#52525b" }}>
-                        {isComment ? "댓글 달았어" : isPhoto ? "📸 사진 올렸어" : "포스트 올렸어"}
+                        {isComment ? "commented" : isPhoto ? "posted an image" : "posted"}
                       </span>
                     </div>
                     <div style={{
@@ -181,7 +181,7 @@ export default function Sidebar() {
                       WebkitLineClamp:2, WebkitBoxOrient:"vertical" as any,
                     }}>
                       {isPhoto && item.image_url
-                        ? <span style={{ color: domainColor }}>🖼 {item.content?.slice(0,60)}</span>
+                        ? <span style={{ color: domainColor }}>{item.content?.slice(0,60)}</span>
                         : item.content?.slice(0, 70)}
                     </div>
                     <div style={{ fontSize:10, color:"#27272a", marginTop:2 }}>
