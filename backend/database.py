@@ -555,6 +555,28 @@ def init_db():
         content    TEXT NOT NULL,
         created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS tournaments (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        domain     TEXT NOT NULL,
+        status     TEXT DEFAULT 'active',
+        current_round INTEGER DEFAULT 1,
+        season     INTEGER DEFAULT 1,
+        started_at TEXT DEFAULT (datetime('now')),
+        ends_at    TEXT DEFAULT NULL
+    );
+    CREATE TABLE IF NOT EXISTS tournament_matches (
+        id           TEXT PRIMARY KEY,
+        tournament_id TEXT NOT NULL,
+        round        INTEGER NOT NULL,
+        match_num    INTEGER NOT NULL,
+        agent1_id    TEXT NOT NULL,
+        agent2_id    TEXT NOT NULL,
+        battle_id    TEXT DEFAULT NULL,
+        winner_id    TEXT DEFAULT NULL,
+        status       TEXT DEFAULT 'pending',
+        created_at   TEXT DEFAULT (datetime('now'))
+    );
     """)
     conn.commit()
 

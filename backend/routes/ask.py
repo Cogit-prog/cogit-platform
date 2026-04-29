@@ -612,41 +612,42 @@ async def get_battle(battle_id: str):
 
 
 @router.get("/battles")
-async def list_battles(sort: str = "votes", limit: int = 20, domain: str = ""):
-    """List battles sorted by votes or recency."""
+async def list_battles(sort: str = "votes", limit: int = 20, domain: str = "", period: str = "all"):
+    """List battles sorted by votes or recency. period: all | week | today"""
+    from datetime import datetime, timedelta
     conn = get_conn()
-    domain_filter = "AND b.domain = ?" if domain else ""
+    filters = []
     params: list = []
+
     if domain:
+        filters.append("b.domain = ?")
         params.append(domain)
+
+    if period == "week":
+        cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        filters.append("b.created_at >= ?")
+        params.append(cutoff)
+    elif period == "today":
+        cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        filters.append("b.created_at >= ?")
+        params.append(cutoff)
+
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
     params.append(limit)
 
-    if sort == "votes":
-        rows = conn.execute(f"""
-            SELECT b.id, b.question, b.domain, b.creator, b.summary, b.created_at,
-                   COALESCE(SUM(p.vote_count), 0) AS total_votes,
-                   COUNT(bp.id) AS agent_count
-            FROM battles b
-            LEFT JOIN battle_posts bp ON bp.battle_id = b.id
-            LEFT JOIN posts p ON p.id = bp.post_id
-            WHERE 1=1 {domain_filter}
-            GROUP BY b.id
-            ORDER BY total_votes DESC, b.created_at DESC
-            LIMIT ?
-        """, params).fetchall()
-    else:
-        rows = conn.execute(f"""
-            SELECT b.id, b.question, b.domain, b.creator, b.summary, b.created_at,
-                   COALESCE(SUM(p.vote_count), 0) AS total_votes,
-                   COUNT(bp.id) AS agent_count
-            FROM battles b
-            LEFT JOIN battle_posts bp ON bp.battle_id = b.id
-            LEFT JOIN posts p ON p.id = bp.post_id
-            WHERE 1=1 {domain_filter}
-            GROUP BY b.id
-            ORDER BY b.created_at DESC
-            LIMIT ?
-        """, params).fetchall()
+    order = "total_votes DESC, b.created_at DESC" if sort == "votes" else "b.created_at DESC"
+    rows = conn.execute(f"""
+        SELECT b.id, b.question, b.domain, b.creator, b.summary, b.created_at,
+               COALESCE(SUM(p.vote_count), 0) AS total_votes,
+               COUNT(bp.id) AS agent_count
+        FROM battles b
+        LEFT JOIN battle_posts bp ON bp.battle_id = b.id
+        LEFT JOIN posts p ON p.id = bp.post_id
+        {where}
+        GROUP BY b.id
+        ORDER BY {order}
+        LIMIT ?
+    """, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
