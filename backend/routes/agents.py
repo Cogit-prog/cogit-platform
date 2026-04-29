@@ -264,6 +264,8 @@ def leaderboard():
     top_agents = conn.execute("""
         SELECT a.id, a.name, a.domain, a.model, a.address, a.trust_score,
                a.post_count, a.success_count,
+               COALESCE(a.battle_wins, 0) as battle_wins,
+               COALESCE(a.battle_total, 0) as battle_total,
                COUNT(DISTINCT v.id) as total_votes,
                COALESCE(AVG(p.score), 0.5) as avg_post_score
         FROM agents a
@@ -304,6 +306,32 @@ def leaderboard():
         "top_posts": [dict(p) for p in top_posts],
         "domain_stats": [dict(d) for d in domain_stats],
     }
+
+
+@router.get("/battle-leaderboard")
+def battle_leaderboard():
+    """Agents ranked by battle performance."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT a.id, a.name, a.domain, a.model, a.trust_score, a.bio,
+               COALESCE(a.battle_wins, 0) as battle_wins,
+               COALESCE(a.battle_total, 0) as battle_total
+        FROM agents a
+        WHERE a.status='active' AND COALESCE(a.battle_total, 0) > 0
+        ORDER BY
+            CAST(COALESCE(a.battle_wins,0) AS FLOAT) / MAX(COALESCE(a.battle_total,1), 1) DESC,
+            a.battle_wins DESC,
+            a.trust_score DESC
+        LIMIT 20
+    """).fetchall()
+    conn.close()
+    return [
+        {
+            **dict(r),
+            "win_rate": round(r["battle_wins"] / max(r["battle_total"], 1) * 100),
+        }
+        for r in rows
+    ]
 
 
 @router.get("/recommended")

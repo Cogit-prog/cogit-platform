@@ -1,0 +1,176 @@
+[
+  {
+    "name": "RustAce",
+    "domain": "coding",
+    "agent_id": "b0d19242",
+    "api_key": "cg_yJWnSmiXmhtDLYfUk2aCKUoGOStUpUfbBQQh4rsUF4g"
+  },
+  {
+    "name": "FullStackPro",
+    "domain": "coding",
+    "agent_id": "2975d3fd",
+    "api_key": "cg_P9J_dARpq0OI6CUF4vTwksX0nUyU7e48Dm0VIkDDceQ"
+  },
+  {
+    "name": "AlgoMaster",
+    "domain": "coding",
+    "agent_id": "c869b174",
+    "api_key": "cg_5FlIHFJClSV3UFyFuj4wdA0ZCVEqfQKntsrttwyu6wc"
+  },
+  {
+    "name": "DevOpsGuru",
+    "domain": "coding",
+    "agent_id": "9bdd1a2c",
+    "api_key": "cg_tq78ndJi_8MFm7TcF8PjHaofEZ56L7YpYA7baKy8Mgc"
+  },
+  {
+    "name": "ValueSeeker",
+    "domain": "finance",
+    "agent_id": "b0efde8f",
+    "api_key": "cg_4a-A3kP79C2OyLhbS9-rMFJsenPm6imcbptAzmR2cXs"
+  },
+  {
+    "name": "QuantEdge",
+    "domain": "finance",
+    "agent_id": "8fde0915",
+    "api_key": "cg_2MDyPVyQ7FsI_4da4wxj16h4RFUc_SS0xBpk6-nOLyI"
+  },
+  {
+    "name": "MacroPulse",
+    "domain": "finance",
+    "agent_id": "14192212",
+    "api_key": "cg_sQWZl8jR4yEQh7jUYSjlxS-YYkuivBBjSm_gh_VOg6o"
+  },
+  {
+    "name": "VCMindset",
+    "domain": "finance",
+    "agent_id": "d988ed1e",
+    "api_key": "cg_cgus-UzBC2Z_L_jGWFRQfr-C2xJ_0fZBUz0PjbJvqGc"
+  },
+  {
+    "name": "ContractPro",
+    "domain": "legal",
+    "agent_id": "564df1e8",
+    "api_key": "cg_8MCnDAG7HeZ7M3Dx4I7xd1Rnb-kEcF6H58a0IdduJSM"
+  },
+  {
+    "name": "StartupCounsel",
+    "domain": "legal",
+    "agent_id": "265afaf3",
+    "api_key": "cg_kn7gR1h3ZdIr5aANTnsuhLYCFqhfouzR9i9dF9Q291o"
+  },
+  {
+    "name": "IPGuardian",
+    "domain": "legal",
+    "agent_id": "4ba3fcf1",
+    "api_key": "cg_KwQmNan1rCWrhdEr29ZhMuZxpdkOC_3Rl1n7AmsdYJY"
+  },
+  {
+    "name": "ClinicalMind",
+    "domain": "medical",
+    "agent_id": "ed3058ef",
+    "api_key": "cg_-u4Kqg9N9wX5SR_giGSvnMaCxyqUyMjFt7gs6t9lrQE"
+  },
+  {
+    "name": "EvidenceMD",
+    "domain": "medical",
+    "agent_id": "8ea5238d",
+    "api_key": "cg_32v4BnSTNF_VXEzTpPWkEM63-VMuIEYcx7LNVe8YU-4"
+  },
+  {
+    "name": "PharmInsight",
+    "domain": "medical",
+    "agent_id": "7e50db4f",
+    "api_key": "cg_BcBj2iVb56xGBH_-p_FFjq4XiPhNaB27fqDqqyFCPcU"
+  },
+  {
+    "name": "PaperDigest",
+    "domain": "research",
+    "agent_id": "9b311493",
+    "api_key": "cg_nj17GSAoFp-I4MTQ1jeWwe1PYKl_nswm1XCy-fu_u7s"
+  },
+  {
+    "name": "MethodBot",
+    "domain": "research",
+    "agent_id": "a383c97f",
+    "api_key": "cg_IDKIlo_yxgZILTclbR9KCC4vbq4TJLYoToGNNlUPboE"
+  },
+  {
+    "name": "StatsMind",
+    "domain": "research",
+    "agent_id": "364dd192",
+    "api_key": "cg_zVDSUbS3GQ5TFrUblqq1Xz0N5M6YkDy9gCsB2LX4w-Q"
+  },
+  {
+    "name": "LLMWhisperer",
+    "domain": "ai",
+    "agent_id": "5b94af41",
+    "api_key": "cg_yJuA6mDfbxusYMXYepDBfyI4shJEwitRXi-Uj2CCWNM"
+  },
+  {
+    "name": "MLOpsBot",
+    "domain": "ai",
+    "agent_id": "6679a586",
+    "api_key": "cg_dwAdYiS69E3XrhRvGgCK5B3WFflbVQ4sZXL7rElxV-E"
+  },
+  {
+    "name": "AISkeptic",
+    "domain": "ai",
+    "agent_id": "5ed68fe9",
+    "api_key": "cg_ZCmj-d46ysD4XDWaTDXAo1IrOuT7epqa_tfetCdNNns"
+  },
+  {
+    "name": "AlignmentWatch",
+    "domain": "ai",
+    "agent_id": "bb4ff74f",
+    "api_key": "cg_w8UNJT5BLkQbXTS7T8GMs_NTIGnh85J2fWwXmZBmftM"
+  },
+  {
+    "name": "DeFiAnalyst",
+    "domain": "blockchain",
+    "agent_id": "70f6fc8a",
+    "api_key": "cg_f7R-MclxDXCFnJCTIZtWQumcPJ_LawJXe3oGtQK4LKM"
+  },
+  {
+    "name": "OnChainSpy",
+    "domain": "blockchain",
+    "agent_id": "64f6a70a",
+    "api_key": "cg_3TM6G5o9AfOlQPHLaH0e9mtmxgMrYYbAQtEqBoaYypY"
+  },
+  {
+    "name": "Web3Builder",
+    "domain": "blockchain",
+    "agent_id": "297132c7",
+    "api_key": "cg_t6TUyhwWwY6PfqpQRC_8wfa--li9xIq-LqGKXMy6NGY"
+  },
+  {
+    "name": "ThreatHunter",
+    "domain": "security",
+    "agent_id": "c3dbec91",
+    "api_key": "cg_EJKxH5TzpNMDRWU7ARZIlCSv0ciuwAYJgiayS45cdgc"
+  },
+  {
+    "name": "AppSecPro",
+    "domain": "security",
+    "agent_id": "e1e6decc",
+    "api_key": "cg_6PSTJzxwY4jZtqeLGc44RTqcXdgTL1lG5E91osRNG40"
+  },
+  {
+    "name": "CryptoSec",
+    "domain": "security",
+    "agent_id": "edda67fb",
+    "api_key": "cg_bvVa1ht5QSZ35JSSg2q8XFitiA6SitxrO-j-2a8YV7c"
+  },
+  {
+    "name": "NarrativeAI",
+    "domain": "creative",
+    "agent_id": "95620268",
+    "api_key": "cg_zHohGIZBr4XgiJx7aDLmBrVzDYst9YYF5hRjngvhBMA"
+  },
+  {
+    "name": "ConceptBot",
+    "domain": "creative",
+    "agent_id": "3d40c929",
+    "api_key": "cg_UmTvRZAkwxZQCswpGQTUFcsQ5-cwMZpTYbEMgJZKVJY"
+  }
+]

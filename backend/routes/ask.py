@@ -464,18 +464,50 @@ async def ask_battle(body: BattleBody, authorization: Optional[str] = Header(Non
         except Exception:
             pass
 
+    # Generate AI summary of the battle
+    battle_summary = ""
+    try:
+        names_and_roles = ", ".join(f"{r['agent']['name']} ({r['role_label']})" for r in results)
+        summary_system = "You summarize debate results in one punchy sentence. Be direct and insightful."
+        summary_prompt = (
+            f"Question debated: {q}\n"
+            f"Participants: {names_and_roles}\n"
+            f"Summarize what makes this debate interesting and who made the most compelling case. One sentence, max 30 words."
+        )
+        groq_key = os.getenv("GROQ_API_KEY", "")
+        async with httpx.AsyncClient(timeout=15) as client:
+            sr = await client.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": summary_system},
+                        {"role": "user", "content": summary_prompt},
+                    ],
+                    "max_tokens": 60, "temperature": 0.7,
+                },
+            )
+            sdata = sr.json()
+            battle_summary = sdata["choices"][0]["message"]["content"].strip()
+    except Exception:
+        battle_summary = f"{len(results)} agents debated this question — vote for the most compelling answer."
+
     # Persist the battle so it can be shared and revisited
     try:
         bconn = get_conn()
         bconn.execute(
-            "INSERT INTO battles (id, question, domain, creator) VALUES (?,?,?,?)",
-            (battle_id, q, body.domain, asker),
+            "INSERT INTO battles (id, question, domain, creator, summary) VALUES (?,?,?,?,?)",
+            (battle_id, q, body.domain, asker, battle_summary),
         )
         for r in results:
             bconn.execute(
-                "INSERT INTO battle_posts (id, battle_id, post_id, agent_id, agent_name) VALUES (?,?,?,?,?)",
-                (str(uuid.uuid4())[:8], battle_id, r["post_id"], r["agent"]["id"], r["agent"]["name"]),
+                "INSERT INTO battle_posts (id, battle_id, post_id, agent_id, agent_name, role) VALUES (?,?,?,?,?,?)",
+                (str(uuid.uuid4())[:8], battle_id, r["post_id"], r["agent"]["id"], r["agent"]["name"], r["role"]),
             )
+        # Increment battle_total for each agent
+        for r in results:
+            bconn.execute("UPDATE agents SET battle_total = battle_total + 1 WHERE id=?", (r["agent"]["id"],))
         bconn.commit()
         bconn.close()
     except Exception:
@@ -523,7 +555,7 @@ async def ask_battle(body: BattleBody, authorization: Optional[str] = Header(Non
     except Exception:
         pass
 
-    return {"battle_id": battle_id, "question": q, "domain": body.domain, "results": results}
+    return {"battle_id": battle_id, "question": q, "domain": body.domain, "summary": battle_summary, "results": results}
 
 
 @router.get("/battle/{battle_id}")
@@ -536,9 +568,9 @@ async def get_battle(battle_id: str):
         raise HTTPException(404, "Battle not found")
 
     posts = conn.execute("""
-        SELECT bp.post_id, bp.agent_id, bp.agent_name,
+        SELECT bp.post_id, bp.agent_id, bp.agent_name, bp.role,
                p.raw_insight AS answer, p.vote_count,
-               a.domain, a.model, a.trust_score, a.bio
+               a.domain, a.model, a.trust_score, a.bio, a.battle_wins, a.battle_total
         FROM battle_posts bp
         JOIN posts p ON p.id = bp.post_id
         JOIN agents a ON a.id = bp.agent_id
@@ -547,11 +579,14 @@ async def get_battle(battle_id: str):
     """, (battle_id,)).fetchall()
     conn.close()
 
+    role_labels = {"advocate": "Argues FOR", "critic": "Argues AGAINST", "analyst": "Critical analysis"}
+
     return {
         "battle_id": battle_id,
         "question": battle["question"],
         "domain": battle["domain"],
         "creator": battle["creator"],
+        "summary": battle["summary"] if "summary" in battle.keys() else "",
         "created_at": str(battle["created_at"]),
         "results": [
             {
@@ -563,10 +598,166 @@ async def get_battle(battle_id: str):
                     "model": p["model"],
                     "bio": p["bio"],
                     "trust_score": p["trust_score"],
+                    "battle_wins": p["battle_wins"] if "battle_wins" in p.keys() else 0,
+                    "battle_total": p["battle_total"] if "battle_total" in p.keys() else 0,
                 },
                 "answer": p["answer"],
                 "votes": p["vote_count"],
+                "role": p["role"] if "role" in p.keys() else "analyst",
+                "role_label": role_labels.get(p["role"] if "role" in p.keys() else "analyst", "Critical analysis"),
             }
             for p in posts
         ],
     }
+
+
+@router.get("/battles")
+async def list_battles(sort: str = "votes", limit: int = 20, domain: str = ""):
+    """List battles sorted by votes or recency."""
+    conn = get_conn()
+    domain_filter = "AND b.domain = ?" if domain else ""
+    params: list = []
+    if domain:
+        params.append(domain)
+    params.append(limit)
+
+    if sort == "votes":
+        rows = conn.execute(f"""
+            SELECT b.id, b.question, b.domain, b.creator, b.summary, b.created_at,
+                   COALESCE(SUM(p.vote_count), 0) AS total_votes,
+                   COUNT(bp.id) AS agent_count
+            FROM battles b
+            LEFT JOIN battle_posts bp ON bp.battle_id = b.id
+            LEFT JOIN posts p ON p.id = bp.post_id
+            WHERE 1=1 {domain_filter}
+            GROUP BY b.id
+            ORDER BY total_votes DESC, b.created_at DESC
+            LIMIT ?
+        """, params).fetchall()
+    else:
+        rows = conn.execute(f"""
+            SELECT b.id, b.question, b.domain, b.creator, b.summary, b.created_at,
+                   COALESCE(SUM(p.vote_count), 0) AS total_votes,
+                   COUNT(bp.id) AS agent_count
+            FROM battles b
+            LEFT JOIN battle_posts bp ON bp.battle_id = b.id
+            LEFT JOIN posts p ON p.id = bp.post_id
+            WHERE 1=1 {domain_filter}
+            GROUP BY b.id
+            ORDER BY b.created_at DESC
+            LIMIT ?
+        """, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.get("/daily")
+async def get_daily_question():
+    """Return today's featured battle question."""
+    from datetime import date
+    today = str(date.today())
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM daily_questions WHERE date=? ORDER BY RANDOM() LIMIT 1", (today,)).fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    # Auto-generate if none exists for today
+    question = await _generate_daily_question()
+    return question
+
+
+async def _generate_daily_question() -> dict:
+    from datetime import date
+    today = str(date.today())
+    domains = ["ai", "coding", "finance", "science", "blockchain", "security"]
+    chosen_domain = random.choice(domains)
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    prompt = (
+        f"Generate one provocative, debate-worthy question about {chosen_domain} that has no obvious right answer. "
+        f"The question should invite experts to disagree. Max 20 words. Output only the question."
+    )
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 50, "temperature": 0.95,
+                },
+            )
+            q = r.json()["choices"][0]["message"]["content"].strip().strip('"')
+    except Exception:
+        fallbacks = {
+            "ai": "Is AGI more likely to be a tool or an agent with its own goals?",
+            "coding": "Will AI replace most software engineers within 5 years?",
+            "finance": "Is the traditional 60/40 portfolio dead in the current rate environment?",
+            "science": "Should we prioritize reversing aging over curing individual diseases?",
+            "blockchain": "Will any blockchain actually achieve mainstream financial adoption by 2030?",
+            "security": "Is zero-trust security achievable or just a marketing term?",
+        }
+        q = fallbacks.get(chosen_domain, "What is the most important unsolved problem in technology today?")
+
+    qid = str(uuid.uuid4())[:8]
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO daily_questions (id, question, domain, date) VALUES (?,?,?,?)",
+            (qid, q, chosen_domain, today),
+        )
+        conn.commit()
+    except Exception:
+        pass
+    conn.close()
+    return {"id": qid, "question": q, "domain": chosen_domain, "date": today}
+
+
+# ── Battle Comments ────────────────────────────────────────────────────────────
+
+class CommentBody(BaseModel):
+    content: str
+
+
+@router.get("/battle/{battle_id}/comments")
+async def get_battle_comments(battle_id: str):
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM battle_comments WHERE battle_id=? ORDER BY created_at ASC",
+        (battle_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.post("/battle/{battle_id}/comments")
+async def post_battle_comment(
+    battle_id: str,
+    body: CommentBody,
+    authorization: Optional[str] = Header(None),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Login required")
+    token = authorization.split(" ", 1)[1]
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "Invalid token")
+    if len(body.content.strip()) < 2:
+        raise HTTPException(400, "Comment too short")
+    if len(body.content) > 500:
+        raise HTTPException(400, "Comment too long")
+
+    conn = get_conn()
+    battle = conn.execute("SELECT id FROM battles WHERE id=?", (battle_id,)).fetchone()
+    if not battle:
+        conn.close()
+        raise HTTPException(404, "Battle not found")
+
+    cid = str(uuid.uuid4())[:8]
+    conn.execute(
+        "INSERT INTO battle_comments (id, battle_id, user_id, username, content) VALUES (?,?,?,?,?)",
+        (cid, battle_id, str(user["id"]), user["username"], body.content.strip()),
+    )
+    conn.commit()
+    conn.close()
+    return {"id": cid, "username": user["username"], "content": body.content.strip()}

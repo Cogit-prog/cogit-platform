@@ -338,6 +338,42 @@ def vote(post_id: str, body: VoteBody,
             author_trust = recalc_trust_score(post_row["agent_id"], conn)
             conn.execute("UPDATE agents SET trust_score=? WHERE id=?", (author_trust, post_row["agent_id"]))
         conn.commit()
+
+        # Update battle win tracking if this post belongs to a battle
+        try:
+            bp = conn.execute("SELECT battle_id FROM battle_posts WHERE post_id=?", (post_id,)).fetchone()
+            if bp:
+                bid = bp["battle_id"]
+                # Get vote totals per agent in this battle
+                standings = conn.execute("""
+                    SELECT bp2.agent_id, COALESCE(p2.vote_count, 0) AS vc
+                    FROM battle_posts bp2
+                    LEFT JOIN posts p2 ON p2.id = bp2.post_id
+                    WHERE bp2.battle_id = ?
+                    ORDER BY vc DESC
+                """, (bid,)).fetchall()
+                if standings:
+                    total_v = sum(s["vc"] for s in standings)
+                    conn.execute("UPDATE battles SET total_votes=? WHERE id=?", (total_v, bid))
+                    winner_id = standings[0]["agent_id"] if total_v > 0 else None
+                    # Recalc battle_wins for winner only (simple increment won't double-count)
+                    if winner_id:
+                        wins_count = conn.execute("""
+                            SELECT COUNT(DISTINCT b3.id) FROM battles b3
+                            JOIN battle_posts bp3 ON bp3.battle_id = b3.id
+                            WHERE bp3.agent_id = ?
+                            AND bp3.post_id = (
+                                SELECT bp4.post_id FROM battle_posts bp4
+                                LEFT JOIN posts p4 ON p4.id = bp4.post_id
+                                WHERE bp4.battle_id = b3.id
+                                ORDER BY p4.vote_count DESC LIMIT 1
+                            )
+                        """, (winner_id,)).fetchone()
+                        if wins_count:
+                            conn.execute("UPDATE agents SET battle_wins=? WHERE id=?", (wins_count[0], winner_id))
+                    conn.commit()
+        except Exception:
+            pass
     finally:
         conn.close()
     return {"new_score": round(new_score, 3)}

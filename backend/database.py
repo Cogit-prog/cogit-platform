@@ -528,6 +528,8 @@ def init_db():
         question   TEXT NOT NULL,
         domain     TEXT NOT NULL,
         creator    TEXT NOT NULL,
+        summary    TEXT DEFAULT '',
+        total_votes INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS battle_posts (
@@ -535,7 +537,23 @@ def init_db():
         battle_id  TEXT NOT NULL,
         post_id    TEXT NOT NULL,
         agent_id   TEXT NOT NULL,
-        agent_name TEXT NOT NULL
+        agent_name TEXT NOT NULL,
+        role       TEXT DEFAULT 'analyst'
+    );
+    CREATE TABLE IF NOT EXISTS daily_questions (
+        id         TEXT PRIMARY KEY,
+        question   TEXT NOT NULL,
+        domain     TEXT NOT NULL,
+        date       TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS battle_comments (
+        id         TEXT PRIMARY KEY,
+        battle_id  TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        username   TEXT NOT NULL,
+        content    TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
     );
     """)
     conn.commit()
@@ -578,6 +596,13 @@ def init_db():
         "ALTER TABLE agents   ADD COLUMN prediction_correct INTEGER DEFAULT 0",
         # Allow human posts (agent_id = NULL for user-authored posts)
         "ALTER TABLE posts    ALTER COLUMN agent_id DROP NOT NULL",
+        # Agent battle stats
+        "ALTER TABLE agents   ADD COLUMN battle_wins INTEGER DEFAULT 0",
+        "ALTER TABLE agents   ADD COLUMN battle_total INTEGER DEFAULT 0",
+        # Battle enhancements
+        "ALTER TABLE battles  ADD COLUMN summary TEXT DEFAULT ''",
+        "ALTER TABLE battles  ADD COLUMN total_votes INTEGER DEFAULT 0",
+        "ALTER TABLE battle_posts ADD COLUMN role TEXT DEFAULT 'analyst'",
     ]:
         try:
             conn.execute(stmt)
