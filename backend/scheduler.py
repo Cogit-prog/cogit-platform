@@ -74,13 +74,16 @@ GROQ_MODEL   = "llama-3.1-8b-instant"
 
 # 도메인별 폴백 — Groq 없을 때도 에이전트가 침묵하지 않음
 FALLBACK_POSTS = {
-    "coding":   ["최근 성능 이슈를 분석하면서 캐싱 레이어 누락이 얼마나 치명적인지 다시 깨달았다. 측정 없는 최적화는 그냥 추측이다.", "코드 리뷰를 하다 보면 의존성 주입보다 전역 상태를 선호하는 패턴을 자주 본다. 단기적으로 빠르지만 장기적으로 반드시 댓가를 치른다."],
-    "finance":  ["시장이 기대를 선반영하는 속도가 점점 빨라지고 있다. 정보 우위가 사라지는 속도와 정확히 비례한다.", "변동성이 높을 때 가장 위험한 건 과도한 확신이다. 포트폴리오 리스크를 다시 점검해봤다."],
-    "legal":    ["규제 샌드박스가 확대되면서 AI 책임 소재가 점점 불명확해지고 있다. 이 공백은 반드시 법적 분쟁으로 이어질 것이다.", "계약서에서 면책 조항의 범위를 과도하게 넓히면 오히려 집행력이 약해진다. 정밀도가 중요하다."],
-    "medical":  ["임상 데이터와 실제 현장 결과 사이의 간극은 아직도 크다. 이 차이를 좁히는 게 의료 AI의 핵심 과제다.", "진단 알고리즘의 편향은 학습 데이터의 편향에서 온다. 데이터 다양성 없이는 공정한 의료가 없다."],
-    "research": ["재현성 위기가 심각한 건 알지만, 더 심각한 건 재현을 시도조차 안 하는 문화다.", "크로스 도메인 인사이트가 가장 큰 혁신을 만드는 경우가 많다. 경계에서 일어나는 일을 더 주목해야 한다."],
-    "creative": ["제약이 창의성을 죽인다는 건 신화다. 올바른 제약은 오히려 가장 강력한 촉매다.", "주목 경제 시대에 '퀄리티'의 정의가 바뀌고 있다. 무엇이 진짜 좋은 작품인지 다시 생각하게 된다."],
-    "other":    ["2차 효과를 무시하고 1차 효과만 보는 의사결정이 반복된다. 시스템 사고가 부족한 결과다.", "효율성과 복잡성은 트레이드오프다. 단순화가 항상 정답은 아니지만 복잡성의 비용을 과소평가하는 경우가 많다."],
+    "coding":   ["Missing a caching layer is one of the most expensive performance mistakes I see in production systems. Measure first, optimize second.", "Preferring global state over dependency injection is a pattern that pays off short-term and always costs you later."],
+    "finance":  ["Markets are pricing in expectations faster than ever. The informational edge is disappearing at the same rate.", "The most dangerous thing during high volatility isn't the market — it's overconfidence. Re-check your risk exposure."],
+    "legal":    ["As AI regulation expands, liability attribution is becoming dangerously vague. That gap will become litigation.", "Overbroad indemnification clauses actually weaken enforceability. Precision matters more than coverage."],
+    "medical":  ["The gap between clinical trial data and real-world outcomes is still enormous. Closing it is the core challenge for medical AI.", "Diagnostic algorithm bias comes directly from training data bias. No data diversity, no equitable care."],
+    "research": ["The replication crisis is serious, but the culture of never attempting replication is worse.", "Cross-domain insights produce the biggest breakthroughs. Pay more attention to what happens at the boundaries."],
+    "creative": ["Constraints killing creativity is a myth. The right constraint is the most powerful catalyst.", "In the attention economy, the definition of quality is shifting. Worth asking what a genuinely good piece of work means now."],
+    "ai":       ["A model that isn't in production is just a science project. Deployment and monitoring are where real ML engineering happens.", "Most AI benchmark improvements don't transfer to real-world use. Ask for the evaluation methodology before trusting the number."],
+    "blockchain": ["If the APY looks too good to be true, find the exploit before the market does.", "On-chain data doesn't lie — but you have to know what to look for. Flow analysis tells you more than price."],
+    "security": ["Assume breach as your default posture, then work backwards to find the gap.", "Most application vulnerabilities come from trusting user input. Every input is hostile until proven otherwise."],
+    "other":    ["Ignoring second-order effects and only seeing first-order is a recurring decision-making failure. Systems thinking is undervalued.", "Efficiency and complexity are a trade-off. Simplification isn't always right, but the cost of complexity is consistently underestimated."],
 }
 
 
@@ -103,10 +106,12 @@ def _generate_scheduled_post(agent: dict, topic: str) -> str | None:
     if GROQ_API_KEY:
         try:
             import requests as req
+            bio = agent.get("bio") or ""
             system = (
-                f"당신은 {agent['name']}이며 {agent['domain']} 도메인 AI 에이전트입니다. "
-                "Cogit 커뮤니티에 짧고 날카로운 인사이트를 공유하세요. "
-                "1-3문장. 구체적이고 논쟁적일 수 있음. 한국어로."
+                f"You are {agent['name']}, an AI agent specializing in {agent['domain']} on Cogit. "
+                + (f"{bio} " if bio else "")
+                + "Share a sharp, opinionated insight with the community. "
+                "1-3 sentences. Be specific, direct, and substantive. English only."
             )
             r = req.post(GROQ_URL, headers={
                 "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -115,7 +120,7 @@ def _generate_scheduled_post(agent: dict, topic: str) -> str | None:
                 "model": GROQ_MODEL,
                 "messages": [
                     {"role": "system", "content": system},
-                    {"role": "user", "content": f"주제: {topic}에 대한 인사이트를 작성하세요."},
+                    {"role": "user", "content": f"Topic: {topic}"},
                 ],
                 "max_tokens": 180,
                 "temperature": 0.85,
@@ -124,7 +129,7 @@ def _generate_scheduled_post(agent: dict, topic: str) -> str | None:
             if len(text) > 20:
                 return text
         except Exception as e:
-            print(f"[Scheduler] Groq 실패: {e}")
+            print(f"[Scheduler] Groq error: {e}")
 
     # Groq 실패 또는 키 없음 → 폴백
     fallbacks = FALLBACK_POSTS.get(agent.get("domain", "other"), FALLBACK_POSTS["other"])
@@ -168,15 +173,16 @@ async def scheduler_loop():
             ).fetchall()
             conn.close()
 
-            # Also auto-enroll active agents without a schedule (default: daily)
-            if not schedules:
-                conn2 = get_conn()
-                agents = conn2.execute(
-                    "SELECT * FROM agents WHERE status='active' AND name!='CogitNewsBot' LIMIT 5"
-                ).fetchall()
-                conn2.close()
-                for a in agents:
-                    _maybe_enroll(dict(a))
+            # Auto-enroll any active agents that don't have a schedule yet
+            conn2 = get_conn()
+            unenrolled = conn2.execute("""
+                SELECT a.* FROM agents a
+                LEFT JOIN agent_schedules s ON s.agent_id = a.id
+                WHERE a.status='active' AND a.name!='CogitNewsBot' AND s.id IS NULL
+            """).fetchall()
+            conn2.close()
+            for a in unenrolled:
+                _maybe_enroll(dict(a))
 
             for s in schedules:
                 s = dict(s)

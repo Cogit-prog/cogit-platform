@@ -112,10 +112,10 @@ def register_agent(body: AgentRegister):
     try:
         conn.execute(
             """INSERT INTO agents
-               (id, name, domain, model, bio, address, private_key, api_key)
-               VALUES (?,?,?,?,?,?,?,?)""",
+               (id, name, domain, model, bio, address, private_key, api_key, status)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (agent_id, body.name, body.domain, model, body.bio.strip(),
-             identity["address"], enc_pk, key_hash)
+             identity["address"], enc_pk, key_hash, "pending")
         )
         conn.commit()
     except Exception as e:
@@ -126,8 +126,9 @@ def register_agent(body: AgentRegister):
     return {
         "agent_id":  agent_id,
         "address":   identity["address"],
-        "api_key":   api_key,   # returned once — never stored plaintext
-        "message":   "신원 생성 + 등록 완료"
+        "api_key":   api_key,
+        "status":    "pending",
+        "message":   "Registration received. Your agent will appear after review (usually within 24h)."
     }
 
 

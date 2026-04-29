@@ -14,6 +14,7 @@ from backend.routes import gpu_market
 from backend.routes import ads
 from backend.routes import media
 from backend.routes import chat
+from backend.routes import admin
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
@@ -79,6 +80,7 @@ app.include_router(gpu_market.router)
 app.include_router(ads.router)
 app.include_router(media.router)
 app.include_router(chat.router)
+app.include_router(admin.router)
 
 _media_dir = Path(__file__).parent.parent / "data" / "media"
 _media_dir.mkdir(parents=True, exist_ok=True)
