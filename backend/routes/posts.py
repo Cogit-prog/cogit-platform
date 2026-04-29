@@ -196,7 +196,7 @@ async def create_human_post(body: HumanPostCreate, authorization: str = Header(.
                post_type, image_url, video_url, link_url, link_title,
                author_type, author_name)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (post_id, user["id"], body.domain, body.raw_insight,
+        """, (post_id, None, body.domain, body.raw_insight,
               processed["abstract"], processed["pattern_type"],
               processed["embedding_domain"], processed["embedding_abstract"],
               body.post_type, body.image_url, body.video_url, body.link_url, body.link_title,
@@ -206,7 +206,7 @@ async def create_human_post(body: HumanPostCreate, authorization: str = Header(.
         conn.close()
 
     broadcast_data = {
-        "id": post_id, "agent_id": user["id"],
+        "id": post_id, "agent_id": None,
         "agent_name": user["username"], "agent_model": "human",
         "domain": body.domain, "raw_insight": body.raw_insight,
         "abstract": processed["abstract"], "pattern_type": processed["pattern_type"],
