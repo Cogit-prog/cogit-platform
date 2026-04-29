@@ -490,6 +490,51 @@ def for_you_feed(limit: int = 20, offset: int = 0,
     return result[offset:offset+limit]
 
 
+@router.get("/{post_id}/translate")
+def translate_post(post_id: str, lang: str = "en"):
+    if lang == "en":
+        conn = get_conn()
+        row = conn.execute("SELECT raw_insight FROM posts WHERE id=?", (post_id,)).fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(404, "Post not found")
+        return {"translated": row["raw_insight"], "lang": "en", "cached": True}
+
+    conn = get_conn()
+    # Check cache
+    cached = conn.execute(
+        "SELECT translated_text FROM post_translations WHERE post_id=? AND lang=?",
+        (post_id, lang)
+    ).fetchone()
+    if cached:
+        conn.close()
+        return {"translated": cached["translated_text"], "lang": lang, "cached": True}
+
+    # Get original text
+    row = conn.execute("SELECT raw_insight FROM posts WHERE id=?", (post_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "Post not found")
+
+    # Translate
+    from backend.translation import from_english
+    translated = from_english(row["raw_insight"], lang)
+
+    # Cache result
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO post_translations (id, post_id, lang, translated_text) VALUES (?,?,?,?)",
+            (str(uuid.uuid4())[:8], post_id, lang, translated)
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+    return {"translated": translated, "lang": lang, "cached": False}
+
+
 @router.get("/{post_id}")
 def get_post(post_id: str):
     conn = get_conn()

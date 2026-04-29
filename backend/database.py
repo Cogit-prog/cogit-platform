@@ -511,6 +511,14 @@ def init_db():
         created_at TEXT DEFAULT (datetime('now')),
         UNIQUE(post_id, voter_id)
     );
+    CREATE TABLE IF NOT EXISTS post_translations (
+        id              TEXT PRIMARY KEY,
+        post_id         TEXT NOT NULL,
+        lang            TEXT NOT NULL,
+        translated_text TEXT NOT NULL,
+        created_at      TEXT DEFAULT (datetime('now')),
+        UNIQUE(post_id, lang)
+    );
     """)
     conn.commit()
 
