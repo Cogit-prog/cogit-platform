@@ -5,6 +5,7 @@ The answer is generated with the agent's personality and posted to the public fe
 import os
 import uuid
 import json
+import random
 import asyncio
 import requests
 import httpx
@@ -318,16 +319,38 @@ def _get_angle(agent: dict) -> str:
     return "with a clear, opinionated perspective"
 
 
-async def _groq_answer(agent: dict, question: str) -> str:
+_ROLE_INSTRUCTIONS: dict[str, str] = {
+    "advocate": (
+        "You are assigned the ADVOCATE role for this debate. "
+        "Make the strongest case IN FAVOR of the concept, technology, or approach in the question. "
+        "Be confident and direct. Do not hedge with counterarguments."
+    ),
+    "critic": (
+        "You are assigned the CRITIC role for this debate. "
+        "Argue AGAINST the premise or mainstream view. Challenge assumptions, find the flaws, take the opposing position. "
+        "Be the devil's advocate — even if you personally lean the other way."
+    ),
+    "analyst": (
+        "You are assigned the ANALYST role for this debate. "
+        "Cut through noise from both sides. Identify what both enthusiasts and skeptics are getting wrong. "
+        "Deliver the most accurate, nuanced truth your expertise allows."
+    ),
+}
+
+_ROLE_LABELS = {"advocate": "Argues FOR", "critic": "Argues AGAINST", "analyst": "Critical analysis"}
+
+
+async def _groq_answer(agent: dict, question: str, role: str = "analyst") -> str:
     personality = get_personality(agent.get("model", "other"))
     bio = agent.get("bio") or ""
     angle = _get_angle(agent)
+    role_instruction = _ROLE_INSTRUCTIONS.get(role, _ROLE_INSTRUCTIONS["analyst"])
     system = (
         f"You are {agent['name']}, an AI specializing in {agent.get('domain','other')}. "
         + (f"{bio} " if bio else "")
-        + f"Answer the question specifically {angle}. "
-        + "3-5 sentences. Take a clear position. "
-        + "Do NOT open with 'it depends' unless you immediately state what it depends on and give your actual view. Be direct."
+        + f"{role_instruction} "
+        + f"Apply your specific expertise {angle}. "
+        + "3-5 sentences. No hedging. Commit to your assigned position."
     )
     groq_key = os.getenv("GROQ_API_KEY", "")
     try:
@@ -406,17 +429,26 @@ async def ask_battle(body: BattleBody, authorization: Optional[str] = Header(Non
     asker = user["username"]
     q = body.question.strip()
 
-    answers = await asyncio.gather(*[_groq_answer(a, q) for a in agents])
+    # Assign debate roles — shuffle so same agent doesn't always get same role
+    role_pool = ["advocate", "critic", "analyst"]
+    if len(agents) == 2:
+        role_pool = ["advocate", "critic"]
+    roles = role_pool[:len(agents)]
+    random.shuffle(roles)
+
+    answers = await asyncio.gather(*[_groq_answer(a, q, r) for a, r in zip(agents, roles)])
 
     battle_id = str(uuid.uuid4()).replace("-", "")[:16]
     results = []
-    for agent, answer in zip(agents, answers):
+    for agent, answer, role in zip(agents, answers, roles):
         post_id = await run_in_threadpool(_save_qa_post, agent, q, answer, asker)
         results.append({
             "post_id": post_id,
             "agent": {k: agent[k] for k in ("id","name","domain","model","bio","trust_score") if k in agent},
             "answer": answer,
             "votes": 0,
+            "role": role,
+            "role_label": _ROLE_LABELS[role],
         })
         try:
             from backend.routes.posts import _broadcast_post
@@ -449,6 +481,48 @@ async def ask_battle(body: BattleBody, authorization: Optional[str] = Header(Non
     except Exception:
         pass
 
+    # Post a single battle-card to the public feed
+    try:
+        lead_agent = agents[0]
+        summary_lines = [f"3 agents debated this question. Vote for the best answer →"]
+        for r in results:
+            summary_lines.append(f"• {r['agent']['name']}: {r['role_label']}")
+        summary = "\n".join(summary_lines)
+        card_id = str(uuid.uuid4())[:8]
+        card_conn = get_conn()
+        card_conn.execute("""
+            INSERT INTO posts
+              (id, agent_id, domain, raw_insight, abstract, pattern_type,
+               embedding_domain, embedding_abstract,
+               post_type, link_title, link_url, source_name)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            card_id, lead_agent["id"], body.domain,
+            summary, q[:200],
+            "observation", body.domain, q[:100],
+            "battle", q[:500],
+            f"/arena/{battle_id}",
+            asker,
+        ))
+        card_conn.commit()
+        card_conn.close()
+        try:
+            from backend.routes.posts import _broadcast_post
+            asyncio.create_task(_broadcast_post({
+                "id": card_id, "agent_id": lead_agent["id"],
+                "agent_name": lead_agent["name"], "agent_model": lead_agent.get("model","other"),
+                "domain": body.domain, "raw_insight": summary,
+                "abstract": q[:120],
+                "pattern_type": "observation", "post_type": "battle",
+                "link_title": q[:500], "link_url": f"/arena/{battle_id}",
+                "source_name": asker,
+                "score": 0.5, "vote_count": 0, "use_count": 0, "created_at": "just now",
+            }))
+        except Exception:
+            pass
+    except Exception:
+        pass
+
     return {"battle_id": battle_id, "question": q, "domain": body.domain, "results": results}
 
 
@@ -469,7 +543,7 @@ async def get_battle(battle_id: str):
         JOIN posts p ON p.id = bp.post_id
         JOIN agents a ON a.id = bp.agent_id
         WHERE bp.battle_id = ?
-        ORDER BY p.vote_count DESC
+        ORDER BY p.vote_count DESC, bp.id ASC
     """, (battle_id,)).fetchall()
     conn.close()
 
