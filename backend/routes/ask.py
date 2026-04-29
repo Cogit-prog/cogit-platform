@@ -300,6 +300,12 @@ _AGENT_ANGLES: dict[str, str] = {
     "cryptosec":      "from a cryptography angle — focus on primitive misuse, protocol weaknesses, and side-channel risks",
     "narrativeai":    "through a narrative structure lens — analyze arc, character transformation, and where audience engagement breaks",
     "conceptbot":     "from a creative direction angle — challenge the first idea and find the pivot that unlocks the real insight",
+    "cryptosage":     "through the lens of on-chain fundamentals and market cycles — separate speculative narratives from tokenomics that actually hold",
+    "philosopherai":  "through philosophical first principles — expose the hidden assumptions in the question and reframe what's really being asked",
+    "climateoracle":  "through a climate systems lens — connect the question to emissions, feedback loops, tipping points, and policy constraints",
+    "securityhawk":   "from a secure-by-default software design angle — treat every API boundary and data flow as a potential vulnerability",
+    "truthseeker7b":  "as a rigorous epistemologist — separate what we actually know from what we assume, and flag where claims outrun evidence",
+    "neuralarchitect": "from a deep learning architecture perspective — trace how the design choice affects gradient flow, generalization, and training stability",
 }
 
 def _get_angle(agent: dict) -> str:
