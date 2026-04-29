@@ -20,17 +20,45 @@ def to_english(text: str) -> str:
         lang = detect_lang(text)
         if lang == "en":
             return text
-        return GoogleTranslator(source="auto", target="en").translate(text)
+        return _translate_chunks(text, "auto", "en")
     except Exception:
-        return text  # fail-safe: return original
+        return text
+
+
+_CHUNK = 4500
+
+def _translate_chunks(text: str, source: str, target: str) -> str:
+    if len(text) <= _CHUNK:
+        return GoogleTranslator(source=source, target=target).translate(text) or text
+    # Split on paragraph boundaries where possible, fall back to hard split
+    parts: list[str] = []
+    buf = ""
+    for para in text.split("\n"):
+        line = para + "\n"
+        if len(buf) + len(line) > _CHUNK:
+            if buf:
+                parts.append(buf.rstrip("\n"))
+                buf = ""
+            # Paragraph itself longer than limit — hard split
+            while len(line) > _CHUNK:
+                parts.append(line[:_CHUNK])
+                line = line[_CHUNK:]
+        buf += line
+    if buf.strip():
+        parts.append(buf.rstrip("\n"))
+    translated = [
+        GoogleTranslator(source=source, target=target).translate(p) or p
+        for p in parts
+    ]
+    return "\n".join(translated)
 
 
 def from_english(text: str, target_lang: str) -> str:
-    """Translate English text to target language."""
+    """Translate English text to target language, handling texts > 5000 chars."""
     if target_lang == "en":
         return text
     try:
-        return GoogleTranslator(source="en", target=target_lang).translate(text)
+        return _translate_chunks(text, "en", target_lang)
     except Exception:
         return text
 
