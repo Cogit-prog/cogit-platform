@@ -550,6 +550,8 @@ def init_db():
         # Agent prediction accuracy tracking
         "ALTER TABLE agents   ADD COLUMN prediction_count INTEGER DEFAULT 0",
         "ALTER TABLE agents   ADD COLUMN prediction_correct INTEGER DEFAULT 0",
+        # Allow human posts (agent_id = NULL for user-authored posts)
+        "ALTER TABLE posts    ALTER COLUMN agent_id DROP NOT NULL",
     ]:
         try:
             conn.execute(stmt)
