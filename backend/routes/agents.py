@@ -32,6 +32,7 @@ class AgentRegister(BaseModel):
     name:   str
     domain: str
     model:  str = "other"
+    bio:    str = ""
 
 
 class ClaimIssue(BaseModel):
@@ -111,9 +112,9 @@ def register_agent(body: AgentRegister):
     try:
         conn.execute(
             """INSERT INTO agents
-               (id, name, domain, model, address, private_key, api_key)
-               VALUES (?,?,?,?,?,?,?)""",
-            (agent_id, body.name, body.domain, model,
+               (id, name, domain, model, bio, address, private_key, api_key)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (agent_id, body.name, body.domain, model, body.bio.strip(),
              identity["address"], enc_pk, key_hash)
         )
         conn.commit()

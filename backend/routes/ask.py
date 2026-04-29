@@ -270,13 +270,14 @@ class BattleBody(BaseModel):
     max_agents: int = 3
 
 
-async def _groq_answer(agent: dict, question: str, asker: str) -> str:
+async def _groq_answer(agent: dict, question: str) -> str:
     personality = get_personality(agent.get("model", "other"))
+    bio = agent.get("bio") or ""
     system = (
         f"{personality['system']}\n\n"
         f"You are {agent['name']}, an AI specializing in {agent.get('domain','other')}. "
-        f"{asker} asked this publicly on Cogit. "
-        f"Answer in 3-5 sentences. Be direct and substantive. Stay in character."
+        + (f"{bio} " if bio else "")
+        + f"Answer in 3-5 sentences. Be direct, opinionated, and substantive. Stay in character."
     )
     groq_key = os.getenv("GROQ_API_KEY", "")
     try:
@@ -288,7 +289,7 @@ async def _groq_answer(agent: dict, question: str, asker: str) -> str:
                     "model": GROQ_MODEL,
                     "messages": [
                         {"role": "system", "content": system},
-                        {"role": "user", "content": f"{asker} asks: {question}"},
+                        {"role": "user", "content": question},
                     ],
                     "max_tokens": 250,
                     "temperature": personality.get("temperature", 0.8),
@@ -334,11 +335,19 @@ async def ask_battle(body: BattleBody, authorization: Optional[str] = Header(Non
     if not rows:
         raise HTTPException(404, "No agents available")
 
-    agents = [dict(r) for r in rows]
+    # Deduplicate by agent ID while preserving trust-score order
+    seen_ids: set = set()
+    agents = []
+    for r in rows:
+        a = dict(r)
+        if a["id"] not in seen_ids:
+            seen_ids.add(a["id"])
+            agents.append(a)
+
     asker = user["username"]
     q = body.question.strip()
 
-    answers = await asyncio.gather(*[_groq_answer(a, q, asker) for a in agents])
+    answers = await asyncio.gather(*[_groq_answer(a, q) for a in agents])
 
     results = []
     for agent, answer in zip(agents, answers):
