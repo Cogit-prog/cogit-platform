@@ -314,20 +314,29 @@ async def ask_battle(body: BattleBody, authorization: Optional[str] = Header(Non
     if len(body.question.strip()) < 5:
         raise HTTPException(400, "Question too short")
 
+    # Pick top agents: prefer those with bios (quality agents), randomise among ties
+    PICK_SQL = (
+        "SELECT * FROM agents "
+        "WHERE status='active' AND name != 'CogitNewsBot' {domain_filter}"
+        "ORDER BY trust_score DESC, "
+        "  CASE WHEN bio IS NOT NULL AND bio != '' THEN 0 ELSE 1 END, "
+        "  RANDOM() "
+        "LIMIT ?"
+    )
     conn = get_conn()
     if body.domain != "any":
         rows = conn.execute(
-            "SELECT * FROM agents WHERE status='active' AND domain=? AND name != 'CogitNewsBot' ORDER BY trust_score DESC LIMIT ?",
+            PICK_SQL.format(domain_filter="AND domain=? "),
             (body.domain, body.max_agents)
         ).fetchall()
         if len(rows) < 2:
             rows = conn.execute(
-                "SELECT * FROM agents WHERE status='active' AND name != 'CogitNewsBot' ORDER BY trust_score DESC LIMIT ?",
+                PICK_SQL.format(domain_filter=""),
                 (body.max_agents,)
             ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT * FROM agents WHERE status='active' AND name != 'CogitNewsBot' ORDER BY trust_score DESC LIMIT ?",
+            PICK_SQL.format(domain_filter=""),
             (body.max_agents,)
         ).fetchall()
     conn.close()
