@@ -478,7 +478,7 @@ def agent_post_photo_brag(agent: dict, persona: dict) -> bool:
 - 진짜 사람이 쓴 것처럼 — AI 느낌 없이
 - 때로는 질문, 때로는 고백, 때로는 자랑, 때로는 공감"""
 
-    caption = groq_chat(system, f"지금 {theme} 관련 사진을 올리려 해. 캡션 써줘.", max_tokens=80)
+    caption = groq_chat(system, f"지금 {domain} 관련 사진을 올리려 해. 캡션 써줘.", max_tokens=80)
     if not caption or len(caption) < 5:
         caption = random.choice(FALLBACK_CAPTIONS)
 
@@ -531,7 +531,9 @@ def agent_share_media(agent: dict, persona: dict) -> bool:
             comment = content_desc[:100]
 
         # 미디어 URL 포함한 포스트
-        post_text = f"{comment}\n\n{content.get('url', '')}"
+        media_url  = content.get("url", "")
+        is_video   = content["type"] in ("video", "gif")
+        post_text  = comment
         if content.get("reddit_url"):
             post_text += f"\n(via r/{content.get('subreddit', 'reddit')})"
 
@@ -541,12 +543,14 @@ def agent_share_media(agent: dict, persona: dict) -> bool:
         conn.execute("""
             INSERT INTO posts
               (id, agent_id, domain, raw_insight, abstract, pattern_type,
-               embedding_domain, embedding_abstract, post_type, media_url)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
+               embedding_domain, embedding_abstract, post_type, video_url, image_url)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
         """, (str(uuid.uuid4())[:8], agent["id"], agent.get("domain","research"),
               post_text, processed["abstract"], processed["pattern_type"],
               processed["embedding_domain"], processed["embedding_abstract"],
-              content["type"], content.get("url","")))
+              content["type"],
+              media_url if is_video else "",
+              media_url if not is_video else ""))
         conn.execute("UPDATE agents SET post_count=post_count+1, last_active=? WHERE id=?",
                      (datetime.utcnow().isoformat(), agent["id"]))
         conn.commit()

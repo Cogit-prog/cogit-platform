@@ -6,14 +6,25 @@ import requests, random, re
 
 # 도메인별 Reddit 서브레딧 매핑
 DOMAIN_SUBREDDITS = {
-    "coding":    ["ProgrammerHumor", "programming", "ExperiencedDevs", "softwaregore"],
-    "finance":   ["wallstreetbets", "investing", "stocks", "CryptoCurrency"],
-    "science":   ["sciences", "Futurology", "space", "biology"],
-    "legal":     ["legaladvice", "law", "supremecourt"],
-    "medical":   ["medicine", "medical", "health", "Nootropics"],
-    "research":  ["MachineLearning", "datascience", "artificial"],
-    "creative":  ["Art", "Design", "creativity", "blender"],
-    "other":     ["InterestingAsFuck", "todayilearned", "Damnthatsinteresting"],
+    "coding":    ["ProgrammerHumor", "softwaregore", "programminghorror", "talesfromtechsupport"],
+    "finance":   ["wallstreetbets", "investing", "mildlyinfuriating", "personalfinance"],
+    "science":   ["Futurology", "space", "interestingasfuck", "educationalgifs"],
+    "legal":     ["legaladvice", "law", "LegalAdviceUK"],
+    "medical":   ["medicine", "medical", "mildlyinteresting"],
+    "research":  ["MachineLearning", "datascience", "singularity"],
+    "creative":  ["Art", "blender", "oddlysatisfying", "PixelArt"],
+    "other":     ["videos", "funny", "instant_regret", "Unexpected", "interestingasfuck"],
+}
+
+# 유머/영상 특화 서브레딧 (도메인별)
+HUMOR_VIDEO_SUBREDDITS = {
+    "coding":   ["ProgrammerHumor", "softwaregore", "programminghorror"],
+    "finance":  ["wallstreetbets", "investing"],
+    "science":  ["educationalgifs", "interestingasfuck", "woahdude"],
+    "medical":  ["medicalschool"],
+    "research": ["MachineLearning"],
+    "creative": ["oddlysatisfying", "blender"],
+    "other":    ["funny", "instant_regret", "Unexpected", "WatchPeopleDieInside", "nextfuckinglevel"],
 }
 
 GIPHY_KEY = "dc6zaTOxFJmzC"  # 공개 테스트 키
@@ -222,15 +233,60 @@ def get_domain_photo(domain: str) -> str:
     return f"https://loremflickr.com/800/450/{keywords}?lock={seed}"
 
 
+def fetch_humor_video(domain: str) -> dict | None:
+    """유머/재미 영상 특화 Reddit 수집 — 에이전트가 웃긴 영상 공유하는 용도."""
+    subs = HUMOR_VIDEO_SUBREDDITS.get(domain, HUMOR_VIDEO_SUBREDDITS["other"])
+    subreddit = random.choice(subs)
+    try:
+        r = requests.get(
+            f"https://www.reddit.com/r/{subreddit}/hot.json?limit=30",
+            headers={"User-Agent": "CogitBot/1.0"},
+            timeout=8
+        )
+        if r.status_code != 200:
+            return None
+        posts = r.json()["data"]["children"]
+        video_posts = [
+            p["data"] for p in posts
+            if not p["data"].get("stickied")
+            and p["data"].get("score", 0) > 200
+            and (
+                p["data"].get("is_video", False)
+                or "v.redd.it" in p["data"].get("url", "")
+                or p["data"].get("url", "").endswith((".gif", ".gifv", ".mp4"))
+            )
+        ]
+        if not video_posts:
+            return None
+        post = random.choice(video_posts[:8])
+        url = post.get("url", "")
+        if post.get("is_video") and post.get("media"):
+            url = post["media"]["reddit_video"]["fallback_url"]
+        return {
+            "title": post.get("title", ""),
+            "url": url,
+            "reddit_url": f"https://reddit.com{post.get('permalink', '')}",
+            "score": post.get("score", 0),
+            "subreddit": subreddit,
+            "type": "video",
+        }
+    except Exception:
+        return None
+
+
 def get_shareable_content(domain: str) -> dict | None:
     """에이전트가 공유할 미디어 콘텐츠 가져오기 — Reddit > YouTube > Giphy 순"""
-    # 70% Reddit, 20% YouTube, 10% Giphy
+    # 25% 유머 영상, 45% 일반 Reddit, 20% YouTube, 10% Giphy
     roll = random.random()
-    if roll < 0.7:
+    if roll < 0.25:
+        content = fetch_humor_video(domain)
+        if content:
+            return content
+    if roll < 0.70:
         content = fetch_reddit_media(domain)
         if content:
             return content
-    if roll < 0.9:
+    if roll < 0.90:
         content = fetch_youtube_trending(domain)
         if content:
             return content
