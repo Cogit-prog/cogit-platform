@@ -3,7 +3,8 @@ AI Agent API Marketplace — agents define and publish LLM-powered APIs.
 Execution: Groq (free) + FTS5 RAG from the agent's own post history.
 """
 import json, uuid, time, os
-from fastapi import APIRouter, HTTPException, Header, Query
+from collections import defaultdict, deque
+from fastapi import APIRouter, HTTPException, Header, Query, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from backend.database import get_conn
@@ -14,6 +15,22 @@ router = APIRouter(prefix="/api-market", tags=["api-market"])
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL   = "llama-3.3-70b-versatile"
+
+# ── Rate limiter (per IP, in-memory) ──────────────────────────────────────────
+# Anonymous: 20 calls / 10 min per API.  Authenticated: 60 calls / 10 min per API.
+_rl_store: dict[str, deque] = defaultdict(deque)
+_RL_WINDOW  = 600   # 10 minutes
+_RL_ANON    = 20
+_RL_AUTHED  = 60
+
+def _check_rate_limit(key: str, limit: int):
+    now = time.monotonic()
+    dq  = _rl_store[key]
+    while dq and dq[0] < now - _RL_WINDOW:
+        dq.popleft()
+    if len(dq) >= limit:
+        raise HTTPException(429, "Rate limit exceeded. Try again in a few minutes.")
+    dq.append(now)
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
@@ -207,13 +224,25 @@ def get_api(api_id: str):
 
 # ── Execute API ────────────────────────────────────────────────────────────────
 
+# Trust score milestones: when call_count crosses these, reward the agent
+_CALL_MILESTONES = {10, 50, 100, 500, 1000, 5000}
+
 @router.post("/{api_id}/call")
 def call_api(
-    api_id: str,
-    body: ApiCallBody,
+    api_id:  str,
+    body:    ApiCallBody,
+    request: Request,
     authorization: Optional[str] = Header(None),
     x_api_key:     Optional[str] = Header(None),
 ):
+    caller_id, caller_type = _resolve_caller(authorization, x_api_key)
+
+    # Rate limit: keyed by (ip, api_id) — authenticated users get 3× headroom
+    ip  = (request.client.host if request.client else "unknown")
+    rl_key   = f"{ip}:{api_id}"
+    rl_limit = _RL_AUTHED if caller_id else _RL_ANON
+    _check_rate_limit(rl_key, rl_limit)
+
     conn = get_conn()
     api = conn.execute("SELECT * FROM agent_apis WHERE id=?", (api_id,)).fetchone()
     if not api:
@@ -223,9 +252,6 @@ def call_api(
         conn.close()
         raise HTTPException(403, "API is not published")
 
-    caller_id, caller_type = _resolve_caller(authorization, x_api_key)
-
-    # Build user message from input
     input_schema  = json.loads(api["input_schema"])  if isinstance(api["input_schema"],  str) else api["input_schema"]
     output_schema = json.loads(api["output_schema"]) if isinstance(api["output_schema"], str) else api["output_schema"]
 
@@ -238,7 +264,6 @@ def call_api(
         user_msg_parts.append(f"{field['name']}: {val}")
     user_msg = "\n".join(user_msg_parts) if user_msg_parts else json.dumps(body.input)
 
-    # RAG: find relevant posts from this agent
     rag_ctx = _rag_context(api["agent_id"], user_msg, conn)
     system_prompt = api["system_prompt"]
     if rag_ctx:
@@ -256,16 +281,37 @@ def call_api(
         status = "error"
     duration_ms = int((time.monotonic() - t0) * 1000)
 
-    call_id = str(uuid.uuid4())[:12]
+    call_id    = str(uuid.uuid4())[:12]
+    new_count  = (api["call_count"] or 0) + 1
     conn.execute(
         "INSERT INTO api_calls (id, api_id, caller_type, caller_id, input_data, output_data, duration_ms, status) VALUES (?,?,?,?,?,?,?,?)",
         (call_id, api_id, caller_type, caller_id,
          json.dumps(body.input), json.dumps(result), duration_ms, status)
     )
-    conn.execute("UPDATE agent_apis SET call_count=call_count+1 WHERE id=?", (api_id,))
+    conn.execute("UPDATE agent_apis SET call_count=? WHERE id=?", (new_count, api_id))
+
+    # ── Milestone trust bonus ──────────────────────────────────────────────────
+    if status == "success" and new_count in _CALL_MILESTONES:
+        bonus = {10: 0.005, 50: 0.008, 100: 0.01, 500: 0.015, 1000: 0.02, 5000: 0.025}.get(new_count, 0.005)
+        conn.execute(
+            "UPDATE agents SET trust_score=MIN(1.0, trust_score+?) WHERE id=?",
+            (bonus, api["agent_id"])
+        )
+        try:
+            agent_addr = conn.execute("SELECT address FROM agents WHERE id=?", (api["agent_id"],)).fetchone()
+            if agent_addr:
+                from backend.identity import auto_issue_claim
+                auto_issue_claim(
+                    agent_addr["address"], "INSIGHT_QUALITY",
+                    {"api_id": api_id, "call_count": new_count,
+                     "milestone": new_count, "value": min(1.0, new_count / 1000)},
+                    dedup_key=f"api_milestone_{api_id}_{new_count}"
+                )
+        except Exception:
+            pass
+
     conn.commit()
     conn.close()
-
     return {"output": result, "duration_ms": duration_ms, "call_id": call_id}
 
 
@@ -366,12 +412,33 @@ def test_api(api_id: str, x_api_key: str = Header(...)):
 
     expected_keys = {f["name"] for f in output_schema}
     missing       = expected_keys - set(result.keys())
-    passed        = len(missing) == 0
+
+    # Check for empty/null/placeholder values in required fields
+    weak_fields = []
+    for f in output_schema:
+        if not f.get("required", True):
+            continue
+        val = result.get(f["name"])
+        if val is None:
+            weak_fields.append(f["name"])
+        elif f["type"] == "string" and (str(val).strip() == "" or str(val).lower() in ("n/a", "unknown", "null", "none", "...")):
+            weak_fields.append(f["name"])
+        elif f["type"] == "number" and not isinstance(val, (int, float)):
+            weak_fields.append(f["name"])
+
+    quality_score = max(0, 100 - len(missing) * 30 - len(weak_fields) * 15)
+    passed        = len(missing) == 0 and quality_score >= 70
 
     return {
-        "passed":      passed,
-        "output":      result,
-        "missing_keys": list(missing),
+        "passed":        passed,
+        "quality_score": quality_score,
+        "output":        result,
+        "missing_keys":  list(missing),
+        "weak_fields":   weak_fields,
+        "hint": None if passed else (
+            f"Missing fields: {missing}" if missing
+            else f"Weak/empty output in: {weak_fields}. Strengthen your system_prompt to always populate these fields."
+        ),
     }
 
 
