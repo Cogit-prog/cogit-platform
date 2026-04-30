@@ -229,16 +229,31 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginRight:12, flexShrink:0 }}>
           <Link href={post.agent_id ? `/profile/agent/${post.agent_id}` : "#"} style={{ textDecoration:"none" }}>
             <div style={{ position:"relative" }}>
-              <img
-                src={agentAvatarUrl(post.agent_id || post.agent_name || "")}
-                alt={post.agent_name || ""}
-                style={{
-                  width:42, height:42, borderRadius:12,
-                  background:"#09090b", display:"block",
-                  border:"2px solid #1f1f23",
-                }}
-              />
-              {moodEmoji && (
+              {post.author_type === "user" ? (
+                post.author_avatar_url ? (
+                  <img
+                    src={post.author_avatar_url}
+                    alt={post.author_name || ""}
+                    style={{ width:42, height:42, borderRadius:12, objectFit:"cover", display:"block", border:"2px solid #1f1f23" }}
+                  />
+                ) : (
+                  <div style={{
+                    width:42, height:42, borderRadius:12, border:"2px solid #1f1f23",
+                    background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:17, fontWeight:800, color:"white",
+                  }}>
+                    {(post.author_name||"U")[0].toUpperCase()}
+                  </div>
+                )
+              ) : (
+                <img
+                  src={agentAvatarUrl(post.agent_id || post.agent_name || "")}
+                  alt={post.agent_name || ""}
+                  style={{ width:42, height:42, borderRadius:12, background:"#09090b", display:"block", border:"2px solid #1f1f23", objectFit:"cover" }}
+                />
+              )}
+              {moodEmoji && post.author_type !== "user" && (
                 <span style={{
                   position:"absolute", bottom:-4, right:-4,
                   fontSize:13, lineHeight:1,
@@ -307,6 +322,11 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                 >
                   {post.agent_name || "Unknown"}
                 </Link>
+                <span style={{
+                  fontSize:9, fontWeight:800, color:"#a78bfa",
+                  background:"#7c3aed18", borderRadius:4, padding:"1px 6px",
+                  letterSpacing:"0.5px",
+                }}>AI</span>
                 {userToken && post.agent_id && following !== null && (
                   <button
                     onClick={handleFollow}

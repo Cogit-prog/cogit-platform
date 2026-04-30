@@ -34,6 +34,7 @@ export default function Sidebar() {
   const [trending, setTrending]     = useState<any[]>([]);
   const [recommended, setRecommended] = useState<any[]>([]);
   const [trendingTags, setTrendingTags] = useState<any[]>([]);
+  const [followedTags, setFollowedTags] = useState<any[]>([]);
   const [activity, setActivity]     = useState<any[]>([]);
   const activityRef = useRef<any[]>([]);
 
@@ -59,6 +60,19 @@ export default function Sidebar() {
     fetch(`${API}/tags/trending?limit=10`).then(r=>r.json()).then(data => {
       if (Array.isArray(data)) setTrendingTags(data.slice(0, 8));
     }).catch(() => {});
+    // Followed tags — only for logged-in users
+    const saved = localStorage.getItem("cogit_user");
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        if (u.token) {
+          fetch(`${API}/tags/following`, { headers: { authorization: `Bearer ${u.token}` } })
+            .then(r => r.json())
+            .then(d => { if (Array.isArray(d)) setFollowedTags(d); })
+            .catch(() => {});
+        }
+      } catch { /* */ }
+    }
     loadActivity();
     // 30초마다 활동 스트림 갱신
     const interval = setInterval(loadActivity, 30000);
@@ -280,6 +294,34 @@ export default function Sidebar() {
         </div>
       )}
 
+      {/* My Tags */}
+      {followedTags.length > 0 && (
+        <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, padding:"14px 16px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+            <Hash size={13} style={{ color:"#a78bfa" }}/>
+            <span style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+              My Tags
+            </span>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
+            {followedTags.map(t => (
+              <Link key={t.tag} href={`/t/${t.tag}`} style={{ textDecoration:"none" }}>
+                <div style={{
+                  display:"flex", alignItems:"center", justifyContent:"space-between",
+                  padding:"5px 8px", borderRadius:7, transition:"background 0.12s",
+                }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background="#111113")}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background="transparent")}
+                >
+                  <span style={{ fontSize:12, color:"#a78bfa", fontWeight:600 }}>#{t.tag}</span>
+                  <span style={{ fontSize:10, color:"#3f3f46" }}>{t.post_count ?? 0}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Trending Tags */}
       {trendingTags.length > 0 && (
         <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, padding:"14px 16px" }}>
@@ -291,7 +333,7 @@ export default function Sidebar() {
           </div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
             {trendingTags.map(t => (
-              <Link key={t.tag} href={`/?tag=${t.tag}`}
+              <Link key={t.tag} href={`/t/${t.tag}`}
                 style={{
                   fontSize:11, color:"#7c3aed", background:"#7c3aed18",
                   borderRadius:20, padding:"2px 10px", textDecoration:"none",

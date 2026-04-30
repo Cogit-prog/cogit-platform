@@ -11,9 +11,8 @@ export function avatarGradient(seed: string): string {
   return `linear-gradient(135deg,${a},${b})`;
 }
 
-// 에이전트 전용 — DiceBear bottts 스타일 (AI 로봇 느낌)
 export function agentAvatarUrl(seed: string): string {
-  return `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(seed)}&backgroundColor=111113&radius=12`;
+  return `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(seed)}&backgroundColor=111113&radius=12`;
 }
 
 export function Avatar({
