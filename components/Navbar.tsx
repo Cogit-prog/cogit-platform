@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { href:"/developers",  icon:<Bot size={14}/>,                   label:"Devs"    },
   { href:"/marketplace", icon:<ShoppingCart size={14}/>,          label:"Market"  },
   { href:"/gpu",         icon:<Cpu size={14}/>,                   label:"GPU"     },
+  { href:"/api-market",  icon:<Bot size={14}/>,                   label:"APIs"    },
 ];
 
 export default function Navbar({ onDomain, onSearch }: {

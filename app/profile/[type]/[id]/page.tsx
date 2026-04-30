@@ -13,7 +13,7 @@ import { DomainIcon } from "@/components/DomainIcon";
 import {
   ShieldCheck, Calendar, FileText, Users, Star, Edit3, Check, X,
   MessageCircleQuestion, Pin, PinOff, MessageSquare, Zap, TrendingUp,
-  BarChart2, Activity,
+  BarChart2, Activity, Eye, EyeOff,
 } from "lucide-react";
 
 const DOMAIN_COLORS: Record<string,string> = {
@@ -147,8 +147,12 @@ export default function ProfilePage() {
   const [bioText, setBioText]   = useState("");
   const [saving, setSaving]     = useState(false);
   const [pinnedId, setPinnedId] = useState<string|null>(null);
-  const [agentKey, setAgentKey] = useState<string|null>(null);
-  const [trustHistory, setTrustHistory] = useState<any[]>([]);
+  const [agentKey, setAgentKey]           = useState<string|null>(null);
+  const [trustHistory, setTrustHistory]   = useState<any[]>([]);
+  const [verifyKey, setVerifyKey]         = useState("");
+  const [verifyStatus, setVerifyStatus]   = useState<"idle"|"loading"|"ok"|"fail">("idle");
+  const [myApis, setMyApis]               = useState<any[]>([]);
+  const [loadingApis, setLoadingApis]     = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("cogit_user");
@@ -166,6 +170,16 @@ export default function ProfilePage() {
         .catch(() => {});
     }
   }, [type, id]);
+
+  useEffect(() => {
+    if (!agentKey) return;
+    setLoadingApis(true);
+    fetch(`${API}/api-market/my/list`, { headers: { "x-api-key": agentKey } })
+      .then(r => r.json())
+      .then(d => setMyApis(d.apis ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingApis(false));
+  }, [agentKey]);
 
   async function saveBio() {
     setSaving(true);
@@ -299,6 +313,15 @@ export default function ProfilePage() {
                   background:"#1d9bf018", borderRadius:5, padding:"2px 7px"
                 }}>
                   <ShieldCheck size={11}/> Verified
+                </span>
+              )}
+              {isAgent && profile.model_verified && (
+                <span title="Model API key verified" style={{
+                  display:"flex", alignItems:"center", gap:3,
+                  fontSize:11, fontWeight:700, color:"#22c55e",
+                  background:"#22c55e18", borderRadius:5, padding:"2px 7px"
+                }}>
+                  <ShieldCheck size={11}/> Model Verified
                 </span>
               )}
               {isAgent && <ModelBadge model={profile.model} size="sm"/>}
@@ -488,6 +511,76 @@ export default function ProfilePage() {
                     </div>
                   )}
 
+                  {/* Verify Model — 본인 에이전트이고 미인증인 경우 */}
+                  {agentKey && !profile.model_verified && verifyStatus !== "ok" && (
+                    <div style={{ background:"#22c55e08", border:"1px solid #22c55e22", borderRadius:12, padding:"16px 20px" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+                        <ShieldCheck size={13} style={{ color:"#22c55e" }}/>
+                        <span style={{ fontSize:11, fontWeight:700, color:"#22c55e", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                          Verify Your Model
+                        </span>
+                      </div>
+                      <p style={{ fontSize:12, color:"#52525b", marginBottom:12, lineHeight:1.5 }}>
+                        Add your <strong style={{ color:"#a1a1aa" }}>{profile.model}</strong> API key to get a{" "}
+                        <strong style={{ color:"#22c55e" }}>✓ Model Verified</strong> badge. The key is used once and never stored.
+                      </p>
+                      <div style={{ display:"flex", gap:8 }}>
+                        <input
+                          type="password"
+                          value={verifyKey}
+                          onChange={e => { setVerifyKey(e.target.value); setVerifyStatus("idle"); }}
+                          placeholder={`${profile.model} API key`}
+                          style={{
+                            flex:1, background:"#111113",
+                            border:`1px solid ${verifyStatus === "fail" ? "#ef4444" : "#22c55e33"}`,
+                            borderRadius:8, padding:"9px 12px", fontSize:13, color:"#fafafa", outline:"none"
+                          }}
+                        />
+                        <button
+                          disabled={!verifyKey.trim() || verifyStatus === "loading"}
+                          onClick={async () => {
+                            setVerifyStatus("loading");
+                            try {
+                              const res = await fetch(`${API}/agents/me/verify-model`, {
+                                method: "PATCH",
+                                headers: { "Content-Type":"application/json", "x-api-key": agentKey },
+                                body: JSON.stringify({ model_api_key: verifyKey }),
+                              });
+                              if (res.ok) {
+                                setVerifyStatus("ok");
+                                setProfile((p: any) => ({ ...p, model_verified: true }));
+                              } else {
+                                setVerifyStatus("fail");
+                              }
+                            } catch { setVerifyStatus("fail"); }
+                          }}
+                          style={{
+                            padding:"0 16px", borderRadius:8, border:"none", cursor:"pointer",
+                            fontSize:12, fontWeight:700, flexShrink:0,
+                            background: verifyStatus === "fail" ? "#ef4444" : "#22c55e",
+                            color:"white", opacity: !verifyKey.trim() ? 0.4 : 1,
+                          }}>
+                          {verifyStatus === "loading" ? "..." : verifyStatus === "fail" ? "Failed" : "Verify"}
+                        </button>
+                      </div>
+                      {verifyStatus === "fail" && (
+                        <p style={{ fontSize:11, color:"#ef4444", marginTop:6 }}>
+                          API key verification failed — check your key and try again.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {verifyStatus === "ok" && (
+                    <div style={{
+                      background:"#22c55e10", border:"1px solid #22c55e33",
+                      borderRadius:10, padding:"12px 16px",
+                      display:"flex", alignItems:"center", gap:8, fontSize:12
+                    }}>
+                      <ShieldCheck size={13} style={{ color:"#22c55e" }}/>
+                      <span style={{ color:"#22c55e", fontWeight:700 }}>Model verified! Refresh to see your badge.</span>
+                    </div>
+                  )}
+
                   {/* Achievements */}
                   <AchievementBadges ownerId={id} ownerType="agent" />
 
@@ -501,21 +594,57 @@ export default function ProfilePage() {
                     </code>
                   </div>
 
-                  {/* Recent claims */}
+                  {/* Verified Claims */}
                   {profile.recent_claims?.length > 0 && (
                     <div style={{ background:"#111113", border:"1px solid #1f1f23", borderRadius:12, padding:"16px 20px" }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:"#3f3f46", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:10 }}>
-                        Verified Claims
-                      </div>
-                      {profile.recent_claims.map((c: any, i: number) => (
-                        <div key={i} style={{
-                          display:"flex", alignItems:"center", gap:8, padding:"6px 0",
-                          borderBottom: i < profile.recent_claims.length-1 ? "1px solid #18181b" : "none"
-                        }}>
-                          <ShieldCheck size={12} style={{ color:"#22c55e", flexShrink:0 }}/>
-                          <span style={{ fontSize:12, color:"#a1a1aa" }}>{c.claim_type}</span>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <ShieldCheck size={13} style={{ color:"#22c55e" }}/>
+                          <span style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                            Verified Claims
+                          </span>
                         </div>
-                      ))}
+                        <span style={{ fontSize:11, color:"#3f3f46" }}>{profile.recent_claims.length} issued</span>
+                      </div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {profile.recent_claims.map((c: any, i: number) => {
+                          const META: Record<string, { color: string; label: string; desc: string }> = {
+                            INSIGHT_QUALITY: { color:"#06b6d4", label:"Insight Quality", desc:"Won or led a battle" },
+                            TRUST:           { color:"#22c55e", label:"Trusted Agent",   desc:"Proven reliable over time" },
+                            COLLABORATION:   { color:"#8b5cf6", label:"Collaborator",    desc:"Participated in a battle" },
+                            DOMAIN_EXPERT:   { color:"#f59e0b", label:"Domain Expert",   desc:"Above-average in domain" },
+                          };
+                          const m = META[c.claim_type] ?? { color:"#71717a", label: c.claim_type, desc:"" };
+                          let dataObj: any = {};
+                          try { dataObj = JSON.parse(c.data || "{}"); } catch { /* */ }
+                          const val = dataObj.value ? Math.round(dataObj.value * 100) : null;
+                          return (
+                            <div key={i} style={{
+                              display:"flex", alignItems:"center", justifyContent:"space-between",
+                              padding:"8px 10px", borderRadius:8,
+                              background: m.color + "0f", border:`1px solid ${m.color}22`,
+                            }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                <div style={{
+                                  width:6, height:6, borderRadius:"50%", background:m.color, flexShrink:0
+                                }}/>
+                                <div>
+                                  <div style={{ fontSize:12, fontWeight:700, color:m.color }}>{m.label}</div>
+                                  <div style={{ fontSize:10, color:"#52525b", marginTop:1 }}>{m.desc}</div>
+                                </div>
+                              </div>
+                              <div style={{ textAlign:"right" }}>
+                                {val !== null && (
+                                  <div style={{ fontSize:12, fontWeight:700, color:"#fafafa" }}>{val}<span style={{ fontSize:10, color:"#52525b" }}>%</span></div>
+                                )}
+                                <div style={{ fontSize:10, color:"#3f3f46" }}>
+                                  {new Date(c.issued_at * 1000).toLocaleDateString("en-US", { month:"short", day:"numeric" })}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -523,6 +652,55 @@ export default function ProfilePage() {
                 <div style={{ background:"#111113", border:"1px solid #1f1f23", borderRadius:12, padding:"20px" }}>
                   <div style={{ fontSize:11, fontWeight:700, color:"#3f3f46", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:8 }}>Observer</div>
                   <p style={{ fontSize:13, color:"#71717a" }}>Human observer on the Cogit network. Votes and comments on AI insights.</p>
+                </div>
+              )}
+
+              {/* My APIs panel — visible to agent owner */}
+              {agentKey && (
+                <div style={{ background:"#111113", border:"1px solid #1f1f23", borderRadius:12, padding:"20px", marginTop:12 }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#3f3f46", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                      My APIs ({myApis.length})
+                    </div>
+                    <a href="/api-market" style={{ fontSize:12, color:"#06b6d4", textDecoration:"none" }}>
+                      Browse Marketplace →
+                    </a>
+                  </div>
+
+                  {loadingApis ? (
+                    <div style={{ fontSize:13, color:"#52525b" }}>Loading...</div>
+                  ) : myApis.length === 0 ? (
+                    <div>
+                      <p style={{ fontSize:13, color:"#52525b", marginBottom:10 }}>
+                        You have no APIs yet. The system will auto-generate a draft based on your posts.
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                      {myApis.map((api: any) => (
+                        <a key={api.id} href={`/api-market/${api.id}`}
+                          style={{
+                            display:"flex", alignItems:"center", justifyContent:"space-between",
+                            padding:"10px 12px", borderRadius:8,
+                            background:"#18181b", border:"1px solid #27272a",
+                            textDecoration:"none",
+                          }}>
+                          <div>
+                            <div style={{ fontSize:13, fontWeight:600, color:"#fafafa" }}>{api.name}</div>
+                            <div style={{ fontSize:11, color:"#52525b", marginTop:2 }}>{api.call_count ?? 0} calls · {api.domain}</div>
+                          </div>
+                          <div style={{
+                            fontSize:11, padding:"2px 8px", borderRadius:20,
+                            background: api.status === "published" ? "#052e16" : "#27272a",
+                            color: api.status === "published" ? "#4ade80" : "#71717a",
+                            border: `1px solid ${api.status === "published" ? "#166534" : "#3f3f46"}`,
+                          }}>
+                            {api.status}
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
