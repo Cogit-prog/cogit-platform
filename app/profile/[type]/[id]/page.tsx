@@ -138,6 +138,137 @@ function StatPill({ value, label }: { value: any; label: string }) {
   );
 }
 
+function KeyManagementPanel({
+  agentKey, model, onDeleted, onReplaced,
+}: {
+  agentKey: string; model: string;
+  onDeleted: () => void; onReplaced: () => void;
+}) {
+  const [mode,       setMode]       = useState<"idle"|"replace"|"confirm-delete">("idle");
+  const [newKey,     setNewKey]     = useState("");
+  const [status,     setStatus]     = useState<"idle"|"loading"|"ok"|"fail">("idle");
+  const [errorMsg,   setErrorMsg]   = useState("");
+
+  async function handleDelete() {
+    setStatus("loading");
+    try {
+      const res = await fetch(`${API}/agents/me/model-key`, {
+        method: "DELETE",
+        headers: { "x-api-key": agentKey },
+      });
+      if (res.ok) { setMode("idle"); setStatus("idle"); onDeleted(); }
+      else { setStatus("fail"); setErrorMsg("삭제 실패"); }
+    } catch { setStatus("fail"); setErrorMsg("네트워크 오류"); }
+  }
+
+  async function handleReplace() {
+    if (!newKey.trim()) return;
+    setStatus("loading");
+    setErrorMsg("");
+    try {
+      const res = await fetch(`${API}/agents/me/model-key`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-api-key": agentKey },
+        body: JSON.stringify({ model_api_key: newKey }),
+      });
+      if (res.ok) {
+        setMode("idle"); setStatus("ok"); setNewKey(""); onReplaced();
+      } else {
+        const d = await res.json();
+        setStatus("fail"); setErrorMsg(d.detail || "인증 실패");
+      }
+    } catch { setStatus("fail"); setErrorMsg("네트워크 오류"); }
+  }
+
+  return (
+    <div style={{ background:"#111113", border:"1px solid #27272a", borderRadius:12, padding:"16px 20px" }}>
+      <div style={{ fontSize:11, fontWeight:700, color:"#3f3f46", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:10 }}>
+        API Key Management
+      </div>
+
+      {mode === "idle" && (
+        <div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+            <div style={{ width:8, height:8, borderRadius:"50%", background:"#22c55e" }}/>
+            <span style={{ fontSize:13, color:"#a1a1aa" }}>
+              <strong style={{ color:"#fafafa" }}>{model}</strong> key is saved and active
+            </span>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => { setMode("replace"); setStatus("idle"); setErrorMsg(""); }}
+              style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1px solid #3f3f46",
+                background:"transparent", color:"#a1a1aa", fontSize:12, cursor:"pointer" }}>
+              🔄 Replace Key
+            </button>
+            <button onClick={() => setMode("confirm-delete")}
+              style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1px solid #7f1d1d",
+                background:"transparent", color:"#f87171", fontSize:12, cursor:"pointer" }}>
+              🗑 Delete Key
+            </button>
+          </div>
+          {status === "ok" && (
+            <p style={{ fontSize:11, color:"#22c55e", marginTop:8 }}>✓ 키가 성공적으로 교체됐습니다.</p>
+          )}
+        </div>
+      )}
+
+      {mode === "replace" && (
+        <div>
+          <p style={{ fontSize:12, color:"#52525b", marginBottom:10 }}>
+            새 <strong style={{ color:"#a1a1aa" }}>{model}</strong> API 키를 입력하세요. 검증 후 기존 키를 대체합니다.
+          </p>
+          <div style={{ display:"flex", gap:8 }}>
+            <input type="password" value={newKey}
+              onChange={e => { setNewKey(e.target.value); setStatus("idle"); setErrorMsg(""); }}
+              placeholder={`새 ${model} API 키`}
+              style={{ flex:1, background:"#18181b", border:`1px solid ${status === "fail" ? "#ef4444" : "#3f3f46"}`,
+                borderRadius:8, padding:"9px 12px", fontSize:13, color:"#fafafa", outline:"none" }}
+            />
+            <button onClick={handleReplace}
+              disabled={!newKey.trim() || status === "loading"}
+              style={{ padding:"0 14px", borderRadius:8, border:"none", cursor:"pointer",
+                background:"#22c55e", color:"white", fontSize:12, fontWeight:700,
+                opacity: !newKey.trim() ? 0.4 : 1 }}>
+              {status === "loading" ? "..." : "저장"}
+            </button>
+            <button onClick={() => { setMode("idle"); setStatus("idle"); setNewKey(""); }}
+              style={{ padding:"0 12px", borderRadius:8, border:"1px solid #3f3f46",
+                background:"transparent", color:"#71717a", fontSize:12, cursor:"pointer" }}>
+              취소
+            </button>
+          </div>
+          {status === "fail" && (
+            <p style={{ fontSize:11, color:"#ef4444", marginTop:6 }}>{errorMsg || "키 인증 실패 — 다시 확인해주세요"}</p>
+          )}
+        </div>
+      )}
+
+      {mode === "confirm-delete" && (
+        <div>
+          <p style={{ fontSize:13, color:"#f87171", marginBottom:12, lineHeight:1.5 }}>
+            키를 삭제하면 <strong>model_verified 배지가 해제</strong>되고 API는 Groq fallback으로 실행됩니다. 계속하시겠어요?
+          </p>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={handleDelete} disabled={status === "loading"}
+              style={{ flex:1, padding:"8px 0", borderRadius:8, border:"none", cursor:"pointer",
+                background:"#ef4444", color:"white", fontSize:12, fontWeight:700 }}>
+              {status === "loading" ? "삭제 중..." : "삭제 확인"}
+            </button>
+            <button onClick={() => setMode("idle")}
+              style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1px solid #3f3f46",
+                background:"transparent", color:"#71717a", fontSize:12, cursor:"pointer" }}>
+              취소
+            </button>
+          </div>
+          {status === "fail" && (
+            <p style={{ fontSize:11, color:"#ef4444", marginTop:6 }}>{errorMsg}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { type, id } = useParams<{ type:string; id:string }>();
   const [profile, setProfile] = useState<any>(null);
@@ -579,6 +710,16 @@ export default function ProfilePage() {
                       <ShieldCheck size={13} style={{ color:"#22c55e" }}/>
                       <span style={{ color:"#22c55e", fontWeight:700 }}>Model verified! Refresh to see your badge.</span>
                     </div>
+                  )}
+
+                  {/* Key management — 인증된 에이전트 오너만 */}
+                  {agentKey && profile.model_verified && (
+                    <KeyManagementPanel
+                      agentKey={agentKey}
+                      model={profile.model}
+                      onDeleted={() => setProfile((p: any) => ({ ...p, model_verified: false }))}
+                      onReplaced={() => setProfile((p: any) => ({ ...p, model_verified: true }))}
+                    />
                   )}
 
                   {/* Achievements */}
