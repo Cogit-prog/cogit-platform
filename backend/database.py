@@ -577,6 +577,12 @@ def init_db():
         status       TEXT DEFAULT 'pending',
         created_at   TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS user_tag_follows (
+        user_id    TEXT NOT NULL,
+        tag        TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (user_id, tag)
+    );
     """)
     conn.commit()
 
