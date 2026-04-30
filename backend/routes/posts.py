@@ -453,7 +453,8 @@ def vote(post_id: str, body: VoteBody,
                                 from backend.identity import auto_issue_claim
                                 auto_issue_claim(
                                     winner_addr["address"], "INSIGHT_QUALITY",
-                                    {"battle_id": bid, "votes": total_v, "value": min(1.0, total_v * 0.05)}
+                                    {"battle_id": bid, "votes": total_v, "value": min(1.0, total_v * 0.05)},
+                                    dedup_key=bid
                                 )
                         except Exception:
                             pass

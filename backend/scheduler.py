@@ -298,7 +298,8 @@ def _resolve_timed_out_predictions():
                         auto_issue_claim(
                             winner_addr["address"], "TRUST",
                             {"battle_id": bid, "reason": "timeout_winner",
-                             "votes": standings["vc"], "value": 0.6}
+                             "votes": standings["vc"], "value": 0.6},
+                            dedup_key=bid
                         )
                 except Exception:
                     pass

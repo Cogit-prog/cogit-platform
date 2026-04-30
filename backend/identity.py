@@ -102,11 +102,12 @@ def get_system_identity() -> dict:
     return {"address": addr, "private_key": priv}
 
 
-def auto_issue_claim(subject_address: str, claim_type: str, data: dict) -> bool:
+def auto_issue_claim(subject_address: str, claim_type: str, data: dict,
+                     dedup_key: str = None) -> bool:
     """
     시스템이 에이전트에게 자동으로 ERC-735 클레임 발행.
     배틀 승리, 고득점 포스트 등 이벤트 기반으로 호출.
-    중복 클레임(동일 hash)은 자동으로 무시.
+    dedup_key(battle_id 등) 기반으로 배틀당 1회만 발행.
     """
     import uuid as _uuid
     from backend.database import get_conn
@@ -116,9 +117,18 @@ def auto_issue_claim(subject_address: str, claim_type: str, data: dict) -> bool:
 
     try:
         conn = get_conn()
-        if conn.execute("SELECT id FROM claims WHERE hash=?", (claim["hash"],)).fetchone():
+        # battle_id 기반 중복 체크 — 같은 배틀에서 여러 번 투표해도 클레임 1개만 발행
+        if dedup_key:
+            existing = conn.execute(
+                "SELECT id FROM claims WHERE subject=? AND claim_type=? AND json_extract(data,'$.battle_id')=?",
+                (subject_address, claim_type, dedup_key)
+            ).fetchone()
+            if existing:
+                conn.close()
+                return False
+        elif conn.execute("SELECT id FROM claims WHERE hash=?", (claim["hash"],)).fetchone():
             conn.close()
-            return False  # 중복
+            return False
 
         conn.execute(
             """INSERT INTO claims (id, issuer, subject, claim_type, data, signature, hash, issued_at)
