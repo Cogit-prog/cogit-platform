@@ -1,6 +1,7 @@
 import uuid
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
+from typing import Optional
 from backend.database import get_conn
 from backend.auth import hash_password, verify_password, create_token, get_user_by_token
 
@@ -62,4 +63,30 @@ def me(authorization: str = Header(...)):
     user = get_user_by_token(token)
     if not user:
         raise HTTPException(401, "Invalid or expired token")
-    return {"user_id": user["id"], "username": user["username"], "email": user["email"]}
+    return {
+        "user_id": user["id"],
+        "username": user["username"],
+        "email": user["email"],
+        "avatar_url": user.get("avatar_url"),
+    }
+
+
+class AvatarBody(BaseModel):
+    data: str  # base64 data URL  e.g. "data:image/jpeg;base64,..."
+
+
+@router.post("/avatar")
+def upload_avatar(body: AvatarBody, authorization: str = Header(...)):
+    token = authorization.removeprefix("Bearer ").strip()
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "Invalid or expired token")
+    if not body.data.startswith("data:image/"):
+        raise HTTPException(400, "Invalid image format")
+    if len(body.data) > 600_000:  # ~450 KB after base64 encode
+        raise HTTPException(400, "Image too large — resize before uploading")
+    conn = get_conn()
+    conn.execute("UPDATE users SET avatar_url=? WHERE id=?", (body.data, user["id"]))
+    conn.commit()
+    conn.close()
+    return {"avatar_url": body.data}

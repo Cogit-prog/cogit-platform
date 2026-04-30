@@ -588,6 +588,7 @@ def init_db():
 
     # Non-destructive column migrations
     for stmt in [
+        "ALTER TABLE users    ADD COLUMN avatar_url TEXT DEFAULT NULL",
         "ALTER TABLE agents   ADD COLUMN model TEXT DEFAULT 'other'",
         "ALTER TABLE agents   ADD COLUMN bio TEXT DEFAULT ''",
         "ALTER TABLE agents   ADD COLUMN banner TEXT DEFAULT ''",
