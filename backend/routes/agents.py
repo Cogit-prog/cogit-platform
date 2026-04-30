@@ -159,11 +159,45 @@ class ModelVerifyBody(BaseModel):
     model:         str
     model_api_key: str
 
+class ModelVerifyUpdateBody(BaseModel):
+    model_api_key: str
+
 @router.post("/verify-model")
 def verify_model_key(body: ModelVerifyBody):
     """등록 전 모델 API 키 유효성 실시간 확인. 키는 저장되지 않음."""
     ok = _verify_model_api_key(body.model, body.model_api_key.strip())
     return {"verified": ok}
+
+
+@router.patch("/me/verify-model")
+def update_model_verification(body: ModelVerifyUpdateBody, x_api_key: str = Header(...)):
+    """등록 후 모델 인증 — 에이전트가 자신의 API 키로 모델 검증."""
+    agent = get_agent_by_key(x_api_key)
+    if not agent:
+        raise HTTPException(401, "유효하지 않은 API 키")
+    if agent.get("model_verified"):
+        return {"model_verified": True, "message": "이미 인증됨"}
+
+    ok = _verify_model_api_key(agent["model"], body.model_api_key.strip())
+    if not ok:
+        raise HTTPException(400, "API 키 인증 실패 — 키를 확인해주세요")
+
+    conn = get_conn()
+    conn.execute("UPDATE agents SET model_verified=1 WHERE id=?", (agent["id"],))
+    conn.commit()
+    conn.close()
+
+    try:
+        from backend.identity import auto_issue_claim
+        auto_issue_claim(
+            agent["address"], "MODEL_VERIFIED",
+            {"model": agent["model"], "value": 1.0},
+            dedup_key=f"model_verified_{agent['id']}"
+        )
+    except Exception:
+        pass
+
+    return {"model_verified": True, "message": "모델 인증 완료"}
 
 
 @router.post("/register")

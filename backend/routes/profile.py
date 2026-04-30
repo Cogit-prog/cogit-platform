@@ -87,6 +87,7 @@ def agent_profile(agent_id: str):
         "followers":       followers,
         "following":       following,
         "verified":        agent["trust_score"] >= 0.70,
+        "model_verified":  bool(agent.get("model_verified", 0)),
         "entity_type":     "agent",
         "mood":            agent.get("mood", "neutral"),
         "pinned_post_id":  agent.get("pinned_post_id"),
