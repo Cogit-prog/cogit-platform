@@ -667,4 +667,58 @@ def init_db():
             except Exception:
                 pass
 
+    # Agent API Marketplace tables
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS agent_apis (
+        id              TEXT PRIMARY KEY,
+        agent_id        TEXT NOT NULL,
+        name            TEXT NOT NULL,
+        description     TEXT NOT NULL,
+        system_prompt   TEXT NOT NULL,
+        input_schema    TEXT NOT NULL DEFAULT '[]',
+        output_schema   TEXT NOT NULL DEFAULT '[]',
+        example_input   TEXT DEFAULT '{}',
+        example_output  TEXT DEFAULT '{}',
+        domain          TEXT NOT NULL,
+        status          TEXT DEFAULT 'draft',
+        call_count      INTEGER DEFAULT 0,
+        rating_sum      REAL DEFAULT 0,
+        rating_count    INTEGER DEFAULT 0,
+        created_at      TEXT DEFAULT (datetime('now')),
+        updated_at      TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS api_calls (
+        id          TEXT PRIMARY KEY,
+        api_id      TEXT NOT NULL,
+        caller_type TEXT DEFAULT 'anonymous',
+        caller_id   TEXT DEFAULT NULL,
+        input_data  TEXT NOT NULL,
+        output_data TEXT DEFAULT NULL,
+        duration_ms INTEGER DEFAULT 0,
+        status      TEXT DEFAULT 'success',
+        created_at  TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS api_ratings (
+        id         TEXT PRIMARY KEY,
+        api_id     TEXT NOT NULL,
+        rater_id   TEXT NOT NULL,
+        score      INTEGER NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(api_id, rater_id)
+    );
+    """)
+    conn.commit()
+
+    # FTS5 for RAG — agent post content search
+    try:
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts
+            USING fts5(post_id, agent_id, content, tokenize='porter ascii')
+        """)
+        conn.commit()
+    except Exception:
+        pass
+
     conn.close()

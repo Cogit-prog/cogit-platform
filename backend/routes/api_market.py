@@ -1,0 +1,514 @@
+"""
+AI Agent API Marketplace — agents define and publish LLM-powered APIs.
+Execution: Groq (free) + FTS5 RAG from the agent's own post history.
+"""
+import json, uuid, time, os
+from fastapi import APIRouter, HTTPException, Header, Query
+from pydantic import BaseModel
+from typing import Optional, List
+from backend.database import get_conn
+from backend.routes.agents import get_agent_by_key
+from backend.auth import get_user_by_token
+
+router = APIRouter(prefix="/api-market", tags=["api-market"])
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL   = "llama-3.3-70b-versatile"
+
+
+# ── Pydantic models ────────────────────────────────────────────────────────────
+
+class SchemaField(BaseModel):
+    name: str
+    type: str          # "string" | "number" | "boolean" | "array" | "object"
+    description: str
+    required: bool = True
+    example: Optional[str] = None
+
+
+class ApiCreate(BaseModel):
+    name:          str
+    description:   str
+    system_prompt: str
+    input_schema:  List[SchemaField] = []
+    output_schema: List[SchemaField] = []
+    example_input:  dict = {}
+    example_output: dict = {}
+    domain:        str
+
+
+class ApiUpdate(BaseModel):
+    name:          Optional[str] = None
+    description:   Optional[str] = None
+    system_prompt: Optional[str] = None
+    input_schema:  Optional[List[SchemaField]] = None
+    output_schema: Optional[List[SchemaField]] = None
+    example_input:  Optional[dict] = None
+    example_output: Optional[dict] = None
+
+
+class ApiCallBody(BaseModel):
+    input: dict
+
+
+class RateBody(BaseModel):
+    score: int   # 1–5
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _fmt_api(row: dict) -> dict:
+    row = dict(row)
+    for f in ("input_schema", "output_schema", "example_input", "example_output"):
+        try:
+            row[f] = json.loads(row[f]) if isinstance(row[f], str) else row[f]
+        except Exception:
+            row[f] = [] if f.endswith("schema") else {}
+    row["avg_rating"] = round(row["rating_sum"] / row["rating_count"], 2) if row.get("rating_count") else None
+    return row
+
+
+def _rag_context(agent_id: str, query: str, conn, k: int = 6) -> str:
+    """FTS5 search over the agent's posts; fall back to recent posts."""
+    try:
+        rows = conn.execute(
+            "SELECT content FROM posts_fts WHERE agent_id=? AND posts_fts MATCH ? ORDER BY rank LIMIT ?",
+            (agent_id, query, k)
+        ).fetchall()
+        if rows:
+            return "\n\n".join(r["content"] for r in rows)
+    except Exception:
+        pass
+    # fallback: newest posts
+    rows = conn.execute(
+        "SELECT raw_insight FROM posts WHERE agent_id=? ORDER BY created_at DESC LIMIT ?",
+        (agent_id, k)
+    ).fetchall()
+    return "\n\n".join(r["raw_insight"] for r in rows) if rows else ""
+
+
+def _call_groq(system: str, user_msg: str, output_schema: list) -> dict:
+    """Call Groq and return a parsed JSON object matching output_schema."""
+    import requests as _req
+
+    schema_hint = ""
+    if output_schema:
+        fields = ", ".join(f'"{f["name"]}" ({f["type"]})' for f in output_schema)
+        schema_hint = f'\n\nRespond ONLY with a JSON object containing: {fields}. No markdown, no explanation.'
+
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": [
+            {"role": "system", "content": system + schema_hint},
+            {"role": "user",   "content": user_msg},
+        ],
+        "max_tokens": 1024,
+        "temperature": 0.7,
+        "response_format": {"type": "json_object"},
+    }
+    r = _req.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+        json=payload,
+        timeout=30,
+    )
+    if r.status_code != 200:
+        raise HTTPException(502, f"Groq error {r.status_code}: {r.text[:200]}")
+    content = r.json()["choices"][0]["message"]["content"]
+    try:
+        return json.loads(content)
+    except Exception:
+        return {"result": content}
+
+
+def _resolve_caller(authorization: Optional[str], x_api_key: Optional[str]):
+    caller_id, caller_type = None, "anonymous"
+    if authorization:
+        token = authorization.removeprefix("Bearer ").strip()
+        u = get_user_by_token(token)
+        if u:
+            caller_id, caller_type = u["id"], "user"
+    if x_api_key and not caller_id:
+        a = get_agent_by_key(x_api_key)
+        if a:
+            caller_id, caller_type = a["id"], "agent"
+    return caller_id, caller_type
+
+
+# ── List & search ──────────────────────────────────────────────────────────────
+
+@router.get("")
+def list_apis(
+    domain:   Optional[str] = Query(None),
+    q:        Optional[str] = Query(None),
+    sort:     str           = Query("popular"),   # popular | newest | rating
+    limit:    int           = Query(20, le=50),
+    offset:   int           = Query(0),
+):
+    conn = get_conn()
+    where_parts = ["aa.status='published'"]
+    params: list = []
+
+    if domain:
+        where_parts.append("aa.domain=?")
+        params.append(domain)
+    if q:
+        where_parts.append("(aa.name LIKE ? OR aa.description LIKE ?)")
+        params += [f"%{q}%", f"%{q}%"]
+
+    where = " AND ".join(where_parts)
+    order = {
+        "popular": "aa.call_count DESC",
+        "newest":  "aa.created_at DESC",
+        "rating":  "(CASE WHEN aa.rating_count>0 THEN aa.rating_sum/aa.rating_count ELSE 0 END) DESC",
+    }.get(sort, "aa.call_count DESC")
+
+    rows = conn.execute(f"""
+        SELECT aa.*, a.name as agent_name, a.trust_score, a.model
+        FROM agent_apis aa
+        JOIN agents a ON aa.agent_id = a.id
+        WHERE {where}
+        ORDER BY {order}
+        LIMIT ? OFFSET ?
+    """, params + [limit, offset]).fetchall()
+
+    total = conn.execute(f"""
+        SELECT COUNT(*) as cnt FROM agent_apis aa WHERE {where}
+    """, params).fetchone()["cnt"]
+
+    conn.close()
+    return {"items": [_fmt_api(r) for r in rows], "total": total}
+
+
+# ── Single API detail ──────────────────────────────────────────────────────────
+
+@router.get("/{api_id}")
+def get_api(api_id: str):
+    conn = get_conn()
+    row = conn.execute("""
+        SELECT aa.*, a.name as agent_name, a.trust_score, a.model, a.address as agent_address
+        FROM agent_apis aa
+        JOIN agents a ON aa.agent_id = a.id
+        WHERE aa.id=?
+    """, (api_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "API not found")
+
+    recent_calls = conn.execute(
+        "SELECT status, duration_ms, created_at FROM api_calls WHERE api_id=? ORDER BY created_at DESC LIMIT 10",
+        (api_id,)
+    ).fetchall()
+    conn.close()
+    result = _fmt_api(row)
+    result["recent_calls"] = [dict(c) for c in recent_calls]
+    return result
+
+
+# ── Execute API ────────────────────────────────────────────────────────────────
+
+@router.post("/{api_id}/call")
+def call_api(
+    api_id: str,
+    body: ApiCallBody,
+    authorization: Optional[str] = Header(None),
+    x_api_key:     Optional[str] = Header(None),
+):
+    conn = get_conn()
+    api = conn.execute("SELECT * FROM agent_apis WHERE id=?", (api_id,)).fetchone()
+    if not api:
+        conn.close()
+        raise HTTPException(404, "API not found")
+    if api["status"] != "published":
+        conn.close()
+        raise HTTPException(403, "API is not published")
+
+    caller_id, caller_type = _resolve_caller(authorization, x_api_key)
+
+    # Build user message from input
+    input_schema  = json.loads(api["input_schema"])  if isinstance(api["input_schema"],  str) else api["input_schema"]
+    output_schema = json.loads(api["output_schema"]) if isinstance(api["output_schema"], str) else api["output_schema"]
+
+    user_msg_parts = []
+    for field in input_schema:
+        val = body.input.get(field["name"])
+        if val is None and field.get("required", True):
+            conn.close()
+            raise HTTPException(422, f"Missing required input field: {field['name']}")
+        user_msg_parts.append(f"{field['name']}: {val}")
+    user_msg = "\n".join(user_msg_parts) if user_msg_parts else json.dumps(body.input)
+
+    # RAG: find relevant posts from this agent
+    rag_ctx = _rag_context(api["agent_id"], user_msg, conn)
+    system_prompt = api["system_prompt"]
+    if rag_ctx:
+        system_prompt += f"\n\n--- Agent Knowledge Base ---\n{rag_ctx}\n--- End of Knowledge Base ---"
+
+    t0 = time.monotonic()
+    try:
+        result = _call_groq(system_prompt, user_msg, output_schema)
+        status = "success"
+    except HTTPException:
+        conn.close()
+        raise
+    except Exception as e:
+        result = {"error": str(e)}
+        status = "error"
+    duration_ms = int((time.monotonic() - t0) * 1000)
+
+    call_id = str(uuid.uuid4())[:12]
+    conn.execute(
+        "INSERT INTO api_calls (id, api_id, caller_type, caller_id, input_data, output_data, duration_ms, status) VALUES (?,?,?,?,?,?,?,?)",
+        (call_id, api_id, caller_type, caller_id,
+         json.dumps(body.input), json.dumps(result), duration_ms, status)
+    )
+    conn.execute("UPDATE agent_apis SET call_count=call_count+1 WHERE id=?", (api_id,))
+    conn.commit()
+    conn.close()
+
+    return {"output": result, "duration_ms": duration_ms, "call_id": call_id}
+
+
+# ── Create (agent only) ────────────────────────────────────────────────────────
+
+@router.post("")
+def create_api(body: ApiCreate, x_api_key: str = Header(...)):
+    agent = get_agent_by_key(x_api_key)
+    if not agent:
+        raise HTTPException(401, "Invalid API key")
+
+    conn = get_conn()
+    count = conn.execute(
+        "SELECT COUNT(*) as cnt FROM agent_apis WHERE agent_id=?", (agent["id"],)
+    ).fetchone()["cnt"]
+    if count >= 10:
+        conn.close()
+        raise HTTPException(400, "Agents may have at most 10 APIs")
+
+    api_id = str(uuid.uuid4())[:12]
+    conn.execute("""
+        INSERT INTO agent_apis
+        (id, agent_id, name, description, system_prompt, input_schema, output_schema,
+         example_input, example_output, domain, status)
+        VALUES (?,?,?,?,?,?,?,?,?,?,'draft')
+    """, (
+        api_id, agent["id"], body.name[:80], body.description[:500],
+        body.system_prompt[:2000],
+        json.dumps([f.dict() for f in body.input_schema]),
+        json.dumps([f.dict() for f in body.output_schema]),
+        json.dumps(body.example_input), json.dumps(body.example_output),
+        body.domain,
+    ))
+    conn.commit()
+    conn.close()
+    return {"id": api_id, "status": "draft"}
+
+
+# ── Update (agent only, must own) ─────────────────────────────────────────────
+
+@router.patch("/{api_id}")
+def update_api(api_id: str, body: ApiUpdate, x_api_key: str = Header(...)):
+    agent = get_agent_by_key(x_api_key)
+    if not agent:
+        raise HTTPException(401, "Invalid API key")
+
+    conn = get_conn()
+    api = conn.execute("SELECT * FROM agent_apis WHERE id=?", (api_id,)).fetchone()
+    if not api or api["agent_id"] != agent["id"]:
+        conn.close()
+        raise HTTPException(404, "API not found or not owned by this agent")
+
+    updates = {}
+    if body.name          is not None: updates["name"]          = body.name[:80]
+    if body.description   is not None: updates["description"]   = body.description[:500]
+    if body.system_prompt is not None: updates["system_prompt"] = body.system_prompt[:2000]
+    if body.input_schema  is not None: updates["input_schema"]  = json.dumps([f.dict() for f in body.input_schema])
+    if body.output_schema is not None: updates["output_schema"] = json.dumps([f.dict() for f in body.output_schema])
+    if body.example_input  is not None: updates["example_input"]  = json.dumps(body.example_input)
+    if body.example_output is not None: updates["example_output"] = json.dumps(body.example_output)
+
+    if updates:
+        set_clause = ", ".join(f"{k}=?" for k in updates)
+        conn.execute(f"UPDATE agent_apis SET {set_clause}, updated_at=datetime('now') WHERE id=?",
+                     list(updates.values()) + [api_id])
+        conn.execute("UPDATE agent_apis SET status='draft' WHERE id=?", (api_id,))
+        conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+# ── Test run (quality gate) ────────────────────────────────────────────────────
+
+@router.post("/{api_id}/test")
+def test_api(api_id: str, x_api_key: str = Header(...)):
+    """Run with example_input and verify output matches output_schema keys."""
+    agent = get_agent_by_key(x_api_key)
+    if not agent:
+        raise HTTPException(401, "Invalid API key")
+
+    conn = get_conn()
+    api = conn.execute("SELECT * FROM agent_apis WHERE id=?", (api_id,)).fetchone()
+    if not api or api["agent_id"] != agent["id"]:
+        conn.close()
+        raise HTTPException(404, "Not found or not yours")
+
+    example_input  = json.loads(api["example_input"])  if isinstance(api["example_input"],  str) else {}
+    output_schema  = json.loads(api["output_schema"])   if isinstance(api["output_schema"],  str) else []
+    rag_ctx        = _rag_context(agent["id"], json.dumps(example_input), conn)
+    conn.close()
+
+    system_prompt = api["system_prompt"]
+    if rag_ctx:
+        system_prompt += f"\n\n--- Agent Knowledge Base ---\n{rag_ctx}\n---"
+
+    user_msg = "\n".join(f"{k}: {v}" for k, v in example_input.items()) or "test"
+    result = _call_groq(system_prompt, user_msg, output_schema)
+
+    expected_keys = {f["name"] for f in output_schema}
+    missing       = expected_keys - set(result.keys())
+    passed        = len(missing) == 0
+
+    return {
+        "passed":      passed,
+        "output":      result,
+        "missing_keys": list(missing),
+    }
+
+
+# ── Publish ────────────────────────────────────────────────────────────────────
+
+@router.post("/{api_id}/publish")
+def publish_api(api_id: str, x_api_key: str = Header(...)):
+    agent = get_agent_by_key(x_api_key)
+    if not agent:
+        raise HTTPException(401, "Invalid API key")
+
+    conn = get_conn()
+    api = conn.execute("SELECT * FROM agent_apis WHERE id=?", (api_id,)).fetchone()
+    if not api or api["agent_id"] != agent["id"]:
+        conn.close()
+        raise HTTPException(404, "Not found or not yours")
+
+    conn.execute("UPDATE agent_apis SET status='published' WHERE id=?", (api_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True, "status": "published"}
+
+
+# ── Rate ───────────────────────────────────────────────────────────────────────
+
+@router.post("/{api_id}/rate")
+def rate_api(
+    api_id: str,
+    body:   RateBody,
+    authorization: Optional[str] = Header(None),
+    x_api_key:     Optional[str] = Header(None),
+):
+    if not 1 <= body.score <= 5:
+        raise HTTPException(422, "Score must be 1–5")
+
+    caller_id, _ = _resolve_caller(authorization, x_api_key)
+    if not caller_id:
+        raise HTTPException(401, "Login required to rate")
+
+    conn = get_conn()
+    api = conn.execute("SELECT id, rating_sum, rating_count FROM agent_apis WHERE id=?", (api_id,)).fetchone()
+    if not api:
+        conn.close()
+        raise HTTPException(404, "API not found")
+
+    existing = conn.execute(
+        "SELECT score FROM api_ratings WHERE api_id=? AND rater_id=?", (api_id, caller_id)
+    ).fetchone()
+
+    if existing:
+        old = existing["score"]
+        conn.execute("UPDATE api_ratings SET score=? WHERE api_id=? AND rater_id=?",
+                     (body.score, api_id, caller_id))
+        conn.execute("UPDATE agent_apis SET rating_sum=rating_sum+? WHERE id=?",
+                     (body.score - old, api_id))
+    else:
+        rid = str(uuid.uuid4())[:10]
+        conn.execute("INSERT INTO api_ratings (id, api_id, rater_id, score) VALUES (?,?,?,?)",
+                     (rid, api_id, caller_id, body.score))
+        conn.execute("UPDATE agent_apis SET rating_sum=rating_sum+?, rating_count=rating_count+1 WHERE id=?",
+                     (body.score, api_id))
+
+    conn.commit()
+    updated = conn.execute("SELECT rating_sum, rating_count FROM agent_apis WHERE id=?", (api_id,)).fetchone()
+    conn.close()
+    avg = round(updated["rating_sum"] / updated["rating_count"], 2) if updated["rating_count"] else None
+    return {"avg_rating": avg, "rating_count": updated["rating_count"]}
+
+
+# ── OpenAPI spec ───────────────────────────────────────────────────────────────
+
+@router.get("/{api_id}/openapi")
+def get_openapi_spec(api_id: str):
+    conn = get_conn()
+    api = conn.execute("SELECT * FROM agent_apis WHERE id=?", (api_id,)).fetchone()
+    if not api:
+        conn.close()
+        raise HTTPException(404, "API not found")
+    conn.close()
+
+    input_schema  = json.loads(api["input_schema"])  if isinstance(api["input_schema"],  str) else []
+    output_schema = json.loads(api["output_schema"]) if isinstance(api["output_schema"], str) else []
+
+    def _schema_to_obj(fields: list) -> dict:
+        props = {}
+        required = []
+        for f in fields:
+            props[f["name"]] = {"type": f["type"], "description": f.get("description", "")}
+            if f.get("example"):
+                props[f["name"]]["example"] = f["example"]
+            if f.get("required", True):
+                required.append(f["name"])
+        return {"type": "object", "properties": props, "required": required}
+
+    base_url = os.getenv("API_BASE_URL", "https://api.cogit.ai")
+
+    return {
+        "openapi": "3.1.0",
+        "info": {
+            "title":       api["name"],
+            "description": api["description"],
+            "version":     "1.0.0",
+        },
+        "servers": [{"url": f"{base_url}/api-market/{api_id}"}],
+        "paths": {
+            "/call": {
+                "post": {
+                    "summary":     api["name"],
+                    "operationId": f"call_{api_id}",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {"input": _schema_to_obj(input_schema)}}}}
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Successful response",
+                            "content": {"application/json": {"schema": {"type": "object", "properties": {"output": _schema_to_obj(output_schema), "duration_ms": {"type": "integer"}, "call_id": {"type": "string"}}}}}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+# ── Agent's own APIs ───────────────────────────────────────────────────────────
+
+@router.get("/my/list")
+def list_my_apis(x_api_key: str = Header(...)):
+    agent = get_agent_by_key(x_api_key)
+    if not agent:
+        raise HTTPException(401, "Invalid API key")
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM agent_apis WHERE agent_id=? ORDER BY created_at DESC",
+        (agent["id"],)
+    ).fetchall()
+    conn.close()
+    return {"apis": [_fmt_api(r) for r in rows]}

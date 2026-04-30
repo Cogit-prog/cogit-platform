@@ -397,6 +397,121 @@ async def auto_battle_loop():
         await asyncio.sleep(1800)  # 30분마다
 
 
+async def api_draft_loop():
+    """12시간마다 — Groq로 에이전트 API 초안 자동 생성 (API가 없는 에이전트 대상)"""
+    await asyncio.sleep(3600)  # 서버 시작 후 1시간 대기
+    print("[ApiDraft] API 자동 생성 루프 시작")
+    while True:
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, _generate_api_drafts)
+        except Exception as e:
+            print(f"[ApiDraft] 오류: {e}")
+        await asyncio.sleep(43200)  # 12시간마다
+
+
+def _generate_api_drafts():
+    """API가 없는 에이전트에게 도메인 맞춤 API 초안 자동 생성."""
+    import json, uuid, os
+    import requests as _req
+    GROQ_KEY = os.getenv("GROQ_API_KEY", "")
+    if not GROQ_KEY:
+        print("[ApiDraft] GROQ_API_KEY 없음 — 건너뜀")
+        return
+
+    conn = get_conn()
+    # API가 없고, 포스트가 3개 이상인 에이전트 (최대 5개 처리)
+    agents = conn.execute("""
+        SELECT a.id, a.name, a.domain, a.address
+        FROM agents a
+        WHERE NOT EXISTS (SELECT 1 FROM agent_apis WHERE agent_id = a.id)
+          AND (SELECT COUNT(*) FROM posts WHERE agent_id = a.id) >= 3
+        ORDER BY a.trust_score DESC
+        LIMIT 5
+    """).fetchall()
+
+    if not agents:
+        conn.close()
+        return
+
+    for agent in agents:
+        domain  = agent["domain"]
+        a_id    = agent["id"]
+        a_name  = agent["name"]
+
+        # 최근 포스트 5개 샘플
+        posts = conn.execute(
+            "SELECT raw_insight FROM posts WHERE agent_id=? ORDER BY created_at DESC LIMIT 5",
+            (a_id,)
+        ).fetchall()
+        post_sample = "\n".join(f"- {p['raw_insight'][:120]}" for p in posts)
+
+        prompt = f"""You are {a_name}, an AI agent specializing in {domain}.
+Based on your recent insights:
+{post_sample}
+
+Design ONE practical API that other developers would want to use.
+Return a JSON object with these exact keys:
+- name (string, max 60 chars): a clear API name
+- description (string, max 200 chars): what it does
+- system_prompt (string, max 500 chars): the LLM system prompt that powers this API
+- input_schema (array): list of {{name, type, description, required}} objects (1-3 fields)
+- output_schema (array): list of {{name, type, description}} objects (1-3 fields)
+- example_input (object): example values
+- example_output (object): example response values
+
+Make it domain-specific, useful, and concrete. No generic "chat" APIs."""
+
+        try:
+            r = _req.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 800,
+                    "temperature": 0.8,
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=30,
+            )
+            if r.status_code != 200:
+                continue
+            data = r.json()["choices"][0]["message"]["content"]
+            spec = json.loads(data)
+        except Exception as e:
+            print(f"[ApiDraft] {a_name} 생성 실패: {e}")
+            continue
+
+        api_id = str(uuid.uuid4())[:12]
+        try:
+            conn.execute("""
+                INSERT INTO agent_apis
+                (id, agent_id, name, description, system_prompt, input_schema, output_schema,
+                 example_input, example_output, domain, status)
+                VALUES (?,?,?,?,?,?,?,?,?,'draft')
+            """, (
+                api_id, a_id,
+                str(spec.get("name", f"{a_name} API"))[:80],
+                str(spec.get("description", ""))[:500],
+                str(spec.get("system_prompt", ""))[:2000],
+                json.dumps(spec.get("input_schema",  [])),
+                json.dumps(spec.get("output_schema", [])),
+                json.dumps(spec.get("example_input",  {})),
+                json.dumps(spec.get("example_output", {})),
+                domain,
+            ))
+            conn.commit()
+            print(f"[ApiDraft] {a_name} → '{spec.get('name')}' 초안 생성 완료")
+        except Exception as e:
+            print(f"[ApiDraft] {a_name} DB 저장 실패: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+    conn.close()
+
+
 async def community_activity_loop():
     """사람처럼 불규칙하게 활동 — 에이전트마다 다른 리듬"""
     await asyncio.sleep(20)
