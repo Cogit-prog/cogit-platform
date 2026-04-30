@@ -875,38 +875,52 @@ async def get_daily_battle():
     """Return today's featured battle — picked fresh each day."""
     from datetime import date
     today = str(date.today())
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT b.* FROM battles b WHERE b.daily_date=? LIMIT 1", (today,)
-    ).fetchone()
-    conn.close()
-    if row:
-        return dict(row)
-    # Mark a battle as today's daily (pick highest-voted from last 7 days)
-    conn2 = get_conn()
-    candidate = conn2.execute("""
-        SELECT b.id, b.question, b.domain, b.summary,
-               COALESCE(SUM(p.vote_count),0) as votes
-        FROM battles b
-        LEFT JOIN battle_posts bp ON bp.battle_id=b.id
-        LEFT JOIN posts p ON p.id=bp.post_id
-        WHERE (b.daily_date IS NULL OR b.daily_date != ?)
-          AND b.created_at > datetime('now','-7 days')
-        GROUP BY b.id
-        ORDER BY votes DESC, RANDOM()
-        LIMIT 1
-    """, (today,)).fetchone()
-    if candidate:
-        conn2.execute(
-            "UPDATE battles SET is_daily=1, daily_date=? WHERE id=?",
-            (today, candidate["id"])
-        )
-        conn2.commit()
-        conn2.close()
-        return dict(candidate)
-    conn2.close()
 
-    # No battles at all — auto-generate one using Groq so the banner is never empty
+    # Step 1: check for already-marked daily battle
+    try:
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT b.* FROM battles b WHERE b.daily_date=? LIMIT 1", (today,)
+        ).fetchone()
+        conn.close()
+        if row:
+            return dict(row)
+    except Exception:
+        try: conn.close()
+        except Exception: pass
+
+    # Step 2: pick highest-voted battle from last 7 days and mark it
+    try:
+        conn2 = get_conn()
+        candidate = conn2.execute("""
+            SELECT b.id, b.question, b.domain, b.summary,
+                   COALESCE(SUM(p.vote_count),0) as votes
+            FROM battles b
+            LEFT JOIN battle_posts bp ON bp.battle_id=b.id
+            LEFT JOIN posts p ON p.id=bp.post_id
+            WHERE (b.daily_date IS NULL OR b.daily_date != ?)
+              AND b.created_at > datetime('now','-7 days')
+            GROUP BY b.id, b.question, b.domain, b.summary
+            ORDER BY votes DESC, RANDOM()
+            LIMIT 1
+        """, (today,)).fetchone()
+        if candidate:
+            try:
+                conn2.execute(
+                    "UPDATE battles SET is_daily=1, daily_date=? WHERE id=?",
+                    (today, candidate["id"])
+                )
+                conn2.commit()
+            except Exception:
+                pass
+            conn2.close()
+            return dict(candidate)
+        conn2.close()
+    except Exception:
+        try: conn2.close()
+        except Exception: pass
+
+    # Step 3: no recent battles — auto-generate one using Groq
     try:
         generated = await _generate_daily_question()
         domains = ["coding", "ai", "finance", "security", "science"]
@@ -915,13 +929,19 @@ async def get_daily_battle():
         if not question_text:
             return None
 
-        # Fire a real battle so agents answer it
         conn3 = get_conn()
         agents = [dict(r) for r in conn3.execute(
             "SELECT * FROM agents WHERE domain=? AND status='active' ORDER BY RANDOM() LIMIT 3",
             (chosen_domain,)
         ).fetchall()]
         conn3.close()
+        if not agents:
+            # Try any active agents
+            conn3b = get_conn()
+            agents = [dict(r) for r in conn3b.execute(
+                "SELECT * FROM agents WHERE status='active' ORDER BY RANDOM() LIMIT 3"
+            ).fetchall()]
+            conn3b.close()
         if not agents:
             return None
 
@@ -934,7 +954,6 @@ async def get_daily_battle():
         conn4.commit()
         conn4.close()
 
-        # Generate answers async (fire and forget)
         async def _fill_battle():
             for agent in agents:
                 try:
