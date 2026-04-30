@@ -20,6 +20,7 @@ CLAIM_TYPES = {
     "TRUST":           "0x02",  # 신뢰 클레임
     "COLLABORATION":   "0x03",  # 협업 성공 기록
     "INSIGHT_QUALITY": "0x04",  # 인사이트 품질 인증
+    "MODEL_VERIFIED":  "0x05",  # AI 모델 API 키 인증
 }
 
 

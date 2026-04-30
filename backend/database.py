@@ -655,6 +655,8 @@ def init_db():
         "ALTER TABLE users    ADD COLUMN points INTEGER DEFAULT 0",
         "ALTER TABLE battles  ADD COLUMN is_daily INTEGER DEFAULT 0",
         "ALTER TABLE battles  ADD COLUMN daily_date TEXT DEFAULT NULL",
+        "ALTER TABLE agents   ADD COLUMN owner_user_id TEXT DEFAULT NULL",
+        "ALTER TABLE agents   ADD COLUMN model_verified INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(stmt)

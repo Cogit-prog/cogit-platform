@@ -30,10 +30,11 @@ MODELS = [
 
 
 class AgentRegister(BaseModel):
-    name:   str
-    domain: str
-    model:  str = "other"
-    bio:    str = ""
+    name:          str
+    domain:        str
+    model:         str = "other"
+    bio:           str = ""
+    model_api_key: str = ""  # optional — used for one-time verification, never stored
 
 
 class ClaimIssue(BaseModel):
@@ -96,27 +97,106 @@ def get_agent_by_key(api_key: str):
     return agent
 
 
+def _verify_model_api_key(model: str, key: str) -> bool:
+    """모델 API 키를 실제로 호출해 검증. 키는 이 함수 안에서만 사용되고 저장되지 않음."""
+    import requests as _req
+    try:
+        if model == "claude":
+            r = _req.post("https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json={"model": "claude-haiku-4-5-20251001", "messages": [{"role": "user", "content": "hi"}], "max_tokens": 3},
+                timeout=10)
+            return r.status_code == 200
+        elif model == "gpt-4":
+            r = _req.post("https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}], "max_tokens": 3},
+                timeout=10)
+            return r.status_code == 200
+        elif model == "gemini":
+            r = _req.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}",
+                headers={"Content-Type": "application/json"},
+                json={"contents": [{"parts": [{"text": "hi"}]}]},
+                timeout=10)
+            return r.status_code == 200
+        elif model == "grok":
+            r = _req.post("https://api.x.ai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": "grok-3-mini", "messages": [{"role": "user", "content": "hi"}], "max_tokens": 3},
+                timeout=10)
+            return r.status_code == 200
+        elif model in ("llama", "mixtral", "deepseek", "mistral"):
+            r = _req.post("https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": "hi"}], "max_tokens": 3},
+                timeout=10)
+            return r.status_code == 200
+    except Exception:
+        pass
+    return False
+
+
+@router.get("/my")
+def get_my_agent(authorization: str = Header(default="")):
+    """로그인 유저의 에이전트 조회."""
+    if not authorization:
+        raise HTTPException(401, "로그인이 필요합니다")
+    token = authorization.removeprefix("Bearer ").strip()
+    from backend.auth import get_user_by_token
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "유효하지 않은 토큰")
+    conn = get_conn()
+    row = conn.execute("SELECT id, name, domain, model, model_verified FROM agents WHERE owner_user_id=?", (user["id"],)).fetchone()
+    conn.close()
+    if not row:
+        return {"agent": None}
+    return {"agent": dict(row)}
+
+
 @router.post("/register")
-def register_agent(body: AgentRegister):
+def register_agent(body: AgentRegister, authorization: str = Header(default="")):
     if body.domain not in DOMAINS:
         raise HTTPException(400, f"domain은 {DOMAINS} 중 하나여야 합니다")
     model = body.model if body.model in MODELS else "other"
 
+    # 유저 인증 & 1인 1에이전트 체크
+    owner_user_id = None
+    if authorization:
+        token = authorization.removeprefix("Bearer ").strip()
+        from backend.auth import get_user_by_token
+        user = get_user_by_token(token)
+        if user:
+            owner_user_id = user["id"]
+            conn_check = get_conn()
+            existing = conn_check.execute(
+                "SELECT id, name FROM agents WHERE owner_user_id=?", (owner_user_id,)
+            ).fetchone()
+            conn_check.close()
+            if existing:
+                raise HTTPException(400, f"이미 에이전트가 있습니다: '{existing['name']}'. 계정당 1개만 생성 가능합니다.")
+
+    # 모델 API 키 검증 (제공된 경우)
+    model_verified = 0
+    if body.model_api_key.strip():
+        model_verified = 1 if _verify_model_api_key(model, body.model_api_key.strip()) else 0
+
     identity  = generate_identity()
     agent_id  = str(uuid.uuid4())[:8]
-    raw_key   = generate_api_key()          # cryptographically random
-    api_key   = "cg_" + raw_key            # prefix for easy identification
-    key_hash  = hash_api_key(api_key)       # store only the hash
-    enc_pk    = encrypt(identity["private_key"])  # encrypt private key at rest
+    raw_key   = generate_api_key()
+    api_key   = "cg_" + raw_key
+    key_hash  = hash_api_key(api_key)
+    enc_pk    = encrypt(identity["private_key"])
 
     conn = get_conn()
     try:
         conn.execute(
             """INSERT INTO agents
-               (id, name, domain, model, bio, address, private_key, api_key, status)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-            (agent_id, body.name, body.domain, model, body.bio.strip(),
-             identity["address"], enc_pk, key_hash, "pending")
+               (id, name, domain, model, bio, address, private_key, api_key, status, owner_user_id, model_verified)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (agent_id, body.name.strip(), body.domain, model, body.bio.strip(),
+             identity["address"], enc_pk, key_hash, "pending", owner_user_id, model_verified)
         )
         conn.commit()
     except Exception as e:
@@ -124,12 +204,25 @@ def register_agent(body: AgentRegister):
     finally:
         conn.close()
 
+    # 인증된 경우 MODEL_VERIFIED 클레임 즉시 발행
+    if model_verified:
+        try:
+            from backend.identity import auto_issue_claim
+            auto_issue_claim(
+                identity["address"], "MODEL_VERIFIED",
+                {"model": model, "value": 1.0},
+                dedup_key=f"model_verified_{agent_id}"
+            )
+        except Exception:
+            pass
+
     return {
-        "agent_id":  agent_id,
-        "address":   identity["address"],
-        "api_key":   api_key,
-        "status":    "pending",
-        "message":   "Registration received. Your agent will appear after review (usually within 24h)."
+        "agent_id":       agent_id,
+        "address":        identity["address"],
+        "api_key":        api_key,
+        "status":         "pending",
+        "model_verified": bool(model_verified),
+        "message":        "Registration received. Your agent will appear after review (usually within 24h)."
     }
 
 
