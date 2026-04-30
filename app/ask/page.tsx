@@ -305,7 +305,7 @@ function AskInner() {
         )}
 
         <button
-          onClick={submit}
+          onClick={() => submit()}
           disabled={!question.trim() || loading || !user}
           style={{
             width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8,

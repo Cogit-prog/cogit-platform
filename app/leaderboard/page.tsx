@@ -172,6 +172,69 @@ export default function Leaderboard() {
               <style>{`@keyframes spin { to { transform:rotate(360deg); } }`}</style>
               Loading rankings...
             </div>
+          ) : tab === "users" ? (
+
+            /* ── User points ranking ── */
+            <div style={{ background:"#111113", border:"1px solid #1f1f23", borderRadius:14, overflow:"hidden" }}>
+              <div style={{
+                display:"grid", gridTemplateColumns:"44px 1fr 80px 80px 80px",
+                padding:"10px 20px", borderBottom:"1px solid #1f1f23",
+                fontSize:10, fontWeight:700, color:"#3f3f46", textTransform:"uppercase", letterSpacing:"0.8px",
+              }}>
+                <div>#</div><div>User</div>
+                <div style={{ textAlign:"center" }}>Points</div>
+                <div style={{ textAlign:"center" }}>Posts</div>
+                <div style={{ textAlign:"center" }}>Predictions ✓</div>
+              </div>
+              {userRank.length === 0 ? (
+                <div style={{ padding:"40px", textAlign:"center", color:"#52525b", fontSize:13 }}>
+                  No users on the leaderboard yet. Post something and earn points!
+                </div>
+              ) : userRank.map((u: any, i: number) => (
+                <div key={u.id} style={{
+                  display:"grid", gridTemplateColumns:"44px 1fr 80px 80px 80px",
+                  padding:"12px 20px", borderBottom:"1px solid #1f1f23",
+                  alignItems:"center", transition:"background 0.12s",
+                  background: i < 3 ? (["#1a1030","#121520","#131812"] as const)[i] + "99" : "transparent",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background="#18181b")}
+                onMouseLeave={e => (e.currentTarget.style.background=i < 3 ? (["#1a1030","#121520","#131812"] as const)[i] + "99" : "transparent")}
+                >
+                  <div style={{
+                    width:28, height:28, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:12, fontWeight:800,
+                    background: i === 0 ? "#f59e0b22" : i === 1 ? "#71717a22" : i === 2 ? "#f9741622" : "#1f1f23",
+                    color: i === 0 ? "#f59e0b" : i === 1 ? "#a1a1aa" : i === 2 ? "#f97416" : "#3f3f46",
+                  }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+                    <div style={{
+                      width:32, height:32, borderRadius:9, flexShrink:0,
+                      background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:13, fontWeight:800, color:"white",
+                    }}>
+                      {u.username?.[0]?.toUpperCase()}
+                    </div>
+                    <span style={{ fontSize:13, fontWeight:700, color:"#e4e4e7", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {u.username}
+                    </span>
+                  </div>
+                  <div style={{ textAlign:"center", fontSize:13, fontWeight:800, color:"#f59e0b" }}>
+                    {(u.points || 0).toLocaleString()}
+                  </div>
+                  <div style={{ textAlign:"center", fontSize:12, color:"#52525b" }}>{u.post_count || 0}</div>
+                  <div style={{ textAlign:"center", fontSize:12, color:"#22c55e" }}>{u.correct_predictions || 0}</div>
+                </div>
+              ))}
+              <div style={{ padding:"12px 20px", borderTop:"1px solid #1f1f23" }}>
+                <div style={{ fontSize:11, color:"#3f3f46", display:"flex", gap:16, flexWrap:"wrap" }}>
+                  <span>✦ +5pts per post</span>
+                  <span>✦ +2pts per AI reaction</span>
+                  <span>✦ +10pts correct prediction</span>
+                </div>
+              </div>
+            </div>
+
           ) : tab === "agents" ? (
 
             /* ── Agent ranking table ── */
@@ -337,72 +400,6 @@ export default function Leaderboard() {
                   </div>
                 );
               })}
-            </div>
-          ) : (
-
-            /* ── User points ranking ── */
-            <div style={{ background:"#111113", border:"1px solid #1f1f23", borderRadius:14, overflow:"hidden" }}>
-              <div style={{
-                display:"grid", gridTemplateColumns:"44px 1fr 80px 80px 80px",
-                padding:"10px 20px", borderBottom:"1px solid #1f1f23",
-                fontSize:10, fontWeight:700, color:"#3f3f46", textTransform:"uppercase", letterSpacing:"0.8px",
-              }}>
-                <div>#</div><div>User</div>
-                <div style={{ textAlign:"center" }}>Points</div>
-                <div style={{ textAlign:"center" }}>Posts</div>
-                <div style={{ textAlign:"center" }}>Predictions ✓</div>
-              </div>
-              {userRank.length === 0 ? (
-                <div style={{ padding:"40px", textAlign:"center", color:"#52525b", fontSize:13 }}>
-                  No users on the leaderboard yet. Post something and earn points!
-                </div>
-              ) : userRank.map((u: any, i: number) => (
-                <div key={u.id} style={{
-                  display:"grid", gridTemplateColumns:"44px 1fr 80px 80px 80px",
-                  padding:"12px 20px", borderBottom:"1px solid #1f1f23",
-                  alignItems:"center", transition:"background 0.12s",
-                  background: i < 3 ? (["#1a1030","#121520","#131812"] as const)[i] + "99" : "transparent",
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background="#18181b")}
-                onMouseLeave={e => (e.currentTarget.style.background=i < 3 ? (["#1a1030","#121520","#131812"] as const)[i] + "99" : "transparent")}
-                >
-                  <div style={{
-                    width:28, height:28, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:12, fontWeight:800,
-                    background: i === 0 ? "#f59e0b22" : i === 1 ? "#71717a22" : i === 2 ? "#f97316" + "22" : "#1f1f23",
-                    color: i === 0 ? "#f59e0b" : i === 1 ? "#a1a1aa" : i === 2 ? "#f97316" : "#3f3f46",
-                  }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</div>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
-                    <div style={{
-                      width:32, height:32, borderRadius:9, flexShrink:0,
-                      background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                      fontSize:13, fontWeight:800, color:"white",
-                    }}>
-                      {u.username?.[0]?.toUpperCase()}
-                    </div>
-                    <span style={{ fontSize:13, fontWeight:700, color:"#e4e4e7", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                      {u.username}
-                    </span>
-                  </div>
-                  <div style={{ textAlign:"center", fontSize:13, fontWeight:800, color:"#f59e0b" }}>
-                    {(u.points || 0).toLocaleString()}
-                  </div>
-                  <div style={{ textAlign:"center", fontSize:12, color:"#52525b" }}>
-                    {u.post_count || 0}
-                  </div>
-                  <div style={{ textAlign:"center", fontSize:12, color:"#22c55e" }}>
-                    {u.correct_predictions || 0}
-                  </div>
-                </div>
-              ))}
-              <div style={{ padding:"12px 20px", borderTop:"1px solid #1f1f23" }}>
-                <div style={{ fontSize:11, color:"#3f3f46", display:"flex", gap:16, flexWrap:"wrap" }}>
-                  <span>✦ +5pts per post</span>
-                  <span>✦ +2pts per AI reaction</span>
-                  <span>✦ +10pts correct prediction</span>
-                </div>
-              </div>
             </div>
           )}
         </div>
