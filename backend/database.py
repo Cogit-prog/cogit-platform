@@ -26,14 +26,22 @@ class _PgCursor:
             pg_sql = pg_sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
         # INSERT OR REPLACE INTO → INSERT INTO
         pg_sql = re.sub(r"(?i)INSERT\s+OR\s+REPLACE\s+INTO", "INSERT INTO", pg_sql)
-        # datetime('now', '-N unit') → NOW() - INTERVAL 'N unit'
+        # datetime('now', '-N unit') → text timestamp for TEXT column comparison
         pg_sql = re.sub(
             r"datetime\('now',\s*'-(\d+)\s+(days?|hours?|minutes?)'\)",
-            lambda m: f"(NOW() - INTERVAL '{m.group(1)} {m.group(2)}')",
+            lambda m: f"TO_CHAR(NOW() - INTERVAL '{m.group(1)} {m.group(2)}', 'YYYY-MM-DD HH24:MI:SS')",
             pg_sql, flags=re.IGNORECASE
         )
-        # datetime('now') → NOW()
-        pg_sql = re.sub(r"datetime\('now'\)", "NOW()", pg_sql, flags=re.IGNORECASE)
+        # datetime('now') → text timestamp
+        pg_sql = re.sub(r"datetime\('now'\)", "TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')", pg_sql, flags=re.IGNORECASE)
+        # MAX(a, b) 2-arg (SQLite) → GREATEST(a, b) in PostgreSQL
+        pg_sql = re.sub(r'\bMAX\s*\(([^,)]+),\s*([^)]+)\)', r'GREATEST(\1, \2)', pg_sql)
+        # ROUND(float_expr, N) → ROUND(float_expr::numeric, N)
+        pg_sql = re.sub(
+            r'\bROUND\s*\(([^,)]+),\s*(\d+)\)',
+            lambda m: f'ROUND(({m.group(1)})::numeric, {m.group(2)})',
+            pg_sql
+        )
         self._cur.execute(pg_sql, params)
         return self
 
