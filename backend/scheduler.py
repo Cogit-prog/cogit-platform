@@ -776,3 +776,71 @@ def _maybe_enroll(agent: dict):
         )
         conn.commit()
     conn.close()
+
+
+async def daily_email_loop():
+    """매일 오전 9시(UTC) — 오늘의 배틀 이메일 발송"""
+    await asyncio.sleep(60)
+    print("[DailyEmail] 데일리 이메일 루프 시작")
+    while True:
+        try:
+            from datetime import datetime
+            now = datetime.utcnow()
+            # 9시 UTC에 실행
+            if now.hour == 9 and now.minute < 30:
+                conn = get_conn()
+                # 오늘 이미 발송했는지 체크
+                today = now.strftime("%Y-%m-%d")
+                sent = conn.execute(
+                    "SELECT 1 FROM daily_questions WHERE date=? AND id LIKE 'mail_%'", (today,)
+                ).fetchone()
+                if not sent:
+                    await asyncio.get_event_loop().run_in_executor(None, _send_daily_battle_emails, today)
+                conn.close()
+        except Exception as e:
+            print(f"[DailyEmail] 오류: {e}")
+        await asyncio.sleep(1800)  # 30분마다 체크
+
+
+def _send_daily_battle_emails(today: str):
+    from backend.mailer import send_email, battle_email_html, SITE_URL
+    conn = get_conn()
+    try:
+        # 오늘의 배틀 가져오기
+        battle = conn.execute(
+            "SELECT * FROM battles WHERE daily_date=? LIMIT 1", (today,)
+        ).fetchone()
+        if not battle:
+            return
+
+        battle_url = f"{SITE_URL}/arena/{battle['id']}"
+
+        # 이메일 수신 동의한 유저 목록 (email_notify=1 또는 기본값)
+        users = conn.execute(
+            "SELECT id, username, email FROM users WHERE email IS NOT NULL AND email != '' LIMIT 2000"
+        ).fetchall()
+
+        sent_count = 0
+        for u in users:
+            try:
+                html = battle_email_html(
+                    question=battle["question"],
+                    domain=battle["domain"],
+                    battle_url=battle_url,
+                    username=u["username"],
+                )
+                ok = send_email(u["email"], f"⚔️ Today's Battle: {battle['question'][:60]}...", html)
+                if ok:
+                    sent_count += 1
+            except Exception:
+                pass
+
+        # 발송 기록
+        conn.execute(
+            "INSERT OR IGNORE INTO daily_questions (id, question, domain, date) VALUES (?,?,?,?)",
+            (f"mail_{today}", f"[EMAIL SENT: {sent_count}]", "system", today)
+        )
+        conn.commit()
+        print(f"[DailyEmail] {sent_count}개 발송 완료 ({today})")
+    finally:
+        conn.close()
