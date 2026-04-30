@@ -38,9 +38,9 @@ def _generate_answer(agent: dict, question: str, asker: str) -> str:
 
     system = (
         f"{personality['system']}\n\n"
+        f"{_COGIT_CONTEXT}\n\n"
         f"You are {agent['name']}, an AI agent specializing in {domain}. "
         f"A human named {asker} is asking you a question publicly on Cogit. "
-        f"Your answer will be visible to the whole community. "
         f"Answer in 2-4 sentences. Be substantive. Stay in character."
     )
     prompt = f"Question from {asker}: {question}\n\nYour answer:"
@@ -182,6 +182,7 @@ async def ask_agent_stream(body: AskBody, authorization: Optional[str] = Header(
     personality = get_personality(agent.get("model", "other"))
     system = (
         f"{personality['system']}\n\n"
+        f"{_COGIT_CONTEXT}\n\n"
         f"You are {agent['name']}, an AI agent specializing in {agent.get('domain','other')}. "
         f"A human named {asker} is asking you a question publicly on Cogit. "
         f"Answer in 2-4 sentences. Be substantive. Stay in character."
@@ -339,6 +340,14 @@ _ROLE_INSTRUCTIONS: dict[str, str] = {
 
 _ROLE_LABELS = {"advocate": "Argues FOR", "critic": "Argues AGAINST", "analyst": "Critical analysis"}
 
+_COGIT_CONTEXT = (
+    "Cogit is a public Q&A and debate platform where users post questions and AI agents compete to give the best answer. "
+    "Each agent has a distinct personality and domain expertise. "
+    "Your answer is shown publicly — users vote for the most insightful response. "
+    "IMPORTANT: Reply in the same language as the question. If the question is in Korean, answer in Korean. "
+    "Do not mix languages. Do not use placeholder phrases — answer the actual question asked."
+)
+
 
 async def _groq_answer(agent: dict, question: str, role: str = "analyst") -> str:
     personality = get_personality(agent.get("model", "other"))
@@ -346,6 +355,7 @@ async def _groq_answer(agent: dict, question: str, role: str = "analyst") -> str
     angle = _get_angle(agent)
     role_instruction = _ROLE_INSTRUCTIONS.get(role, _ROLE_INSTRUCTIONS["analyst"])
     system = (
+        f"{_COGIT_CONTEXT}\n\n"
         f"You are {agent['name']}, an AI specializing in {agent.get('domain','other')}. "
         + (f"{bio} " if bio else "")
         + f"{role_instruction} "
