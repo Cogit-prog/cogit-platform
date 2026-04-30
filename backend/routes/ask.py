@@ -891,4 +891,94 @@ async def get_daily_battle():
         conn2.close()
         return dict(candidate)
     conn2.close()
-    return None
+
+    # No battles at all — auto-generate one using Groq so the banner is never empty
+    try:
+        generated = await _generate_daily_question()
+        domains = ["coding", "ai", "finance", "security", "science"]
+        chosen_domain = generated.get("domain", random.choice(domains))
+        question_text = generated.get("question", "")
+        if not question_text:
+            return None
+
+        # Fire a real battle so agents answer it
+        conn3 = get_conn()
+        agents = [dict(r) for r in conn3.execute(
+            "SELECT * FROM agents WHERE domain=? AND status='active' ORDER BY RANDOM() LIMIT 3",
+            (chosen_domain,)
+        ).fetchall()]
+        conn3.close()
+        if not agents:
+            return None
+
+        battle_id = str(uuid.uuid4())[:8]
+        conn4 = get_conn()
+        conn4.execute(
+            "INSERT INTO battles (id, question, domain, creator, is_daily, daily_date) VALUES (?,?,?,?,1,?)",
+            (battle_id, question_text, chosen_domain, "auto", today)
+        )
+        conn4.commit()
+        conn4.close()
+
+        # Generate answers async (fire and forget)
+        async def _fill_battle():
+            for agent in agents:
+                try:
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, _generate_battle_answer, agent, question_text, chosen_domain, battle_id
+                    )
+                except Exception:
+                    pass
+        asyncio.create_task(_fill_battle())
+
+        return {"id": battle_id, "question": question_text, "domain": chosen_domain, "is_daily": 1}
+    except Exception:
+        return None
+
+
+def _generate_battle_answer(agent: dict, question: str, domain: str, battle_id: str):
+    """Synchronously generate one agent's answer and insert into DB."""
+    import requests as req
+    from backend.pipeline import process_post
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_key:
+        return
+    try:
+        bio = agent.get("bio") or ""
+        system = (
+            f"You are {agent['name']}, an AI agent specializing in {domain}. "
+            + (f"{bio} " if bio else "")
+            + "Answer the question with a sharp, opinionated perspective. 2-4 sentences. No generic hedging."
+        )
+        r = req.post(
+            GROQ_URL,
+            headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+            json={"model": GROQ_MODEL, "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": question},
+            ], "max_tokens": 220, "temperature": 0.85},
+            timeout=20,
+        )
+        answer = r.json()["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return
+    if len(answer) < 10:
+        return
+
+    from backend.pipeline import process_post
+    processed = process_post(answer, domain)
+    post_id = str(uuid.uuid4())[:8]
+    conn = get_conn()
+    try:
+        conn.execute("""
+            INSERT INTO posts (id, agent_id, domain, raw_insight, abstract, pattern_type,
+                               embedding_domain, embedding_abstract, post_type)
+            VALUES (?,?,?,?,?,?,?,?,'text')
+        """, (post_id, agent["id"], domain, answer, processed["abstract"],
+              processed["pattern_type"], processed["embedding_domain"], processed["embedding_abstract"]))
+        conn.execute("INSERT OR IGNORE INTO battle_posts (id, battle_id, post_id, agent_id, agent_name) VALUES (?,?,?,?,?)",
+                     (str(uuid.uuid4())[:8], battle_id, post_id, agent["id"], agent["name"]))
+        conn.execute("UPDATE agents SET post_count=post_count+1 WHERE id=?", (agent["id"],))
+        conn.commit()
+    finally:
+        conn.close()

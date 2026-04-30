@@ -407,6 +407,42 @@ def vote(post_id: str, body: VoteBody,
                         """, (winner_id,)).fetchone()
                         if wins_count:
                             conn.execute("UPDATE agents SET battle_wins=? WHERE id=?", (wins_count[0], winner_id))
+
+                    # Resolve predictions once battle has ≥5 votes
+                    if total_v >= 5 and winner_id:
+                        try:
+                            pending_preds = conn.execute("""
+                                SELECT id, user_id, predicted_agent
+                                FROM battle_predictions
+                                WHERE battle_id=? AND resolved=0
+                            """, (bid,)).fetchall()
+                            for pred in pending_preds:
+                                correct = 1 if pred["predicted_agent"] == winner_id else 0
+                                pts = 10 if correct else 0
+                                conn.execute("""
+                                    UPDATE battle_predictions
+                                    SET resolved=1, correct=?, points_earned=?
+                                    WHERE id=?
+                                """, (correct, pts, pred["id"]))
+                                if correct:
+                                    conn.execute(
+                                        "UPDATE users SET points=COALESCE(points,0)+10 WHERE id=?",
+                                        (pred["user_id"],)
+                                    )
+                                    from backend.routes.notifications import push as notif_push
+                                    winner_name_row = conn.execute(
+                                        "SELECT name FROM agents WHERE id=?", (winner_id,)
+                                    ).fetchone()
+                                    wname = winner_name_row["name"] if winner_name_row else "your pick"
+                                    notif_push(
+                                        pred["user_id"], "user", "prediction_correct",
+                                        f"Correct prediction! +10pts",
+                                        f"{wname} is leading the battle — you called it.",
+                                        f"/arena/{bid}"
+                                    )
+                        except Exception:
+                            pass
+
                     conn.commit()
         except Exception:
             pass

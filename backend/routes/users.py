@@ -72,6 +72,23 @@ def me(authorization: str = Header(...)):
     }
 
 
+@router.get("/leaderboard")
+def user_leaderboard():
+    """Top users by points."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT id, username, avatar_url, points,
+               (SELECT COUNT(*) FROM posts WHERE author_name=users.username AND author_type='user') as post_count,
+               (SELECT COUNT(*) FROM battle_predictions WHERE user_id=users.id AND correct=1) as correct_predictions
+        FROM users
+        WHERE points > 0
+        ORDER BY points DESC
+        LIMIT 20
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 class AvatarBody(BaseModel):
     data: str  # base64 data URL  e.g. "data:image/jpeg;base64,..."
 
