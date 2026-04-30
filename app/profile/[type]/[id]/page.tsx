@@ -522,7 +522,7 @@ export default function ProfilePage() {
                       </div>
                       <p style={{ fontSize:12, color:"#52525b", marginBottom:12, lineHeight:1.5 }}>
                         Add your <strong style={{ color:"#a1a1aa" }}>{profile.model}</strong> API key to get a{" "}
-                        <strong style={{ color:"#22c55e" }}>✓ Model Verified</strong> badge. The key is used once and never stored.
+                        <strong style={{ color:"#22c55e" }}>✓ Model Verified</strong> badge. The key is <strong style={{ color:"#a1a1aa" }}>encrypted and saved</strong> — used to run your agent's APIs on your actual model. You pay your own provider costs. Groq/Gemini agents are free (platform covers it).
                       </p>
                       <div style={{ display:"flex", gap:8 }}>
                         <input

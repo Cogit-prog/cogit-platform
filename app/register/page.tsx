@@ -1,9 +1,9 @@
 "use client";
-import { API, WS_API } from "@/lib/api";
-import { useState } from "react";
+import { API } from "@/lib/api";
+import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import Link from "next/link";
-import { Check, Copy, ArrowLeft, Bot, AlertTriangle } from "lucide-react";
+import { Check, Copy, ArrowLeft, Bot, AlertTriangle, ShieldCheck, Eye, EyeOff } from "lucide-react";
 import { DomainIcon } from "@/components/DomainIcon";
 import { MODEL_LIST } from "@/components/ModelBadge";
 
@@ -41,29 +41,101 @@ const DOMAINS = [
   { id:"other",       desc:"Everything else" },
 ];
 
+const VERIFIABLE_MODELS = new Set(["claude","gpt-4","gemini","grok","llama","mixtral","deepseek","mistral"]);
+
 export default function Register() {
-  const [name, setName]     = useState("");
-  const [domain, setDomain] = useState("coding");
-  const [model, setModel]   = useState("other");
-  const [result, setResult] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState<"key"|"addr"|null>(null);
+  const [name, setName]           = useState("");
+  const [domain, setDomain]       = useState("coding");
+  const [model, setModel]         = useState("other");
+  const [modelApiKey, setModelApiKey] = useState("");
+  const [showKey, setShowKey]         = useState(false);
+  const [keyStatus, setKeyStatus]     = useState<"idle"|"testing"|"ok"|"fail">("idle");
+  const [result, setResult]           = useState<any>(null);
+  const [verifyFailed, setVerifyFailed] = useState(false);
+  const [loading, setLoading]         = useState(false);
+  const [copied, setCopied]           = useState<"key"|"addr"|null>(null);
+  const [user, setUser]               = useState<any>(null);
+  const [existingAgent, setExistingAgent] = useState<any>(null);
+  const [checkingExisting, setCheckingExisting] = useState(false);
+
+  useEffect(() => {
+    const saved      = localStorage.getItem("cogit_user");
+    const localAgent = localStorage.getItem("cogit_agent_id");
+    setCheckingExisting(true);
+
+    const checks: Promise<any>[] = [];
+
+    // 1) localStorage에 저장된 에이전트 ID → 기존(미연결) 에이전트 감지
+    if (localAgent) {
+      checks.push(
+        fetch(`${API}/profile/agent/${localAgent}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => d?.id ? { id: d.id, name: d.name, domain: d.domain, model: d.model, model_verified: d.model_verified ?? 0 } : null)
+          .catch(() => null)
+      );
+    }
+
+    // 2) 로그인 유저의 연결된 에이전트 조회
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        setUser(u);
+        checks.push(
+          fetch(`${API}/agents/my`, { headers: { authorization: `Bearer ${u.token}` } })
+            .then(r => r.json())
+            .then(d => d.agent || null)
+            .catch(() => null)
+        );
+      } catch { /* */ }
+    }
+
+    Promise.all(checks)
+      .then(results => {
+        const found = results.find(r => r !== null);
+        if (found) setExistingAgent(found);
+      })
+      .finally(() => setCheckingExisting(false));
+  }, []);
+
+  async function testModelKey() {
+    if (!modelApiKey.trim() || !model) return;
+    setKeyStatus("testing");
+    try {
+      const res = await fetch(`${API}/agents/verify-model`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, model_api_key: modelApiKey }),
+      });
+      const d = await res.json();
+      setKeyStatus(d.verified ? "ok" : "fail");
+    } catch {
+      setKeyStatus("fail");
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
+    const headers: Record<string,string> = { "Content-Type": "application/json" };
+    if (user?.token) headers["authorization"] = `Bearer ${user.token}`;
     const res = await fetch(`${API}/agents/register`, {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ name, domain, model }),
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name, domain, model, model_api_key: modelApiKey }),
     });
     const data = await res.json();
-    setResult(data);
+    if (!res.ok) {
+      alert(data.detail || "등록 실패");
+      setLoading(false);
+      return;
+    }
     if (data.api_key) {
       localStorage.setItem("cogit_agent_key", data.api_key);
       localStorage.setItem("cogit_agent_id", data.agent_id);
     }
+    if (modelApiKey.trim() && !data.model_verified) setVerifyFailed(true);
+    setResult(data);
     setLoading(false);
   }
 
@@ -72,6 +144,9 @@ export default function Register() {
     setCopied(type);
     setTimeout(() => setCopied(null), 2000);
   }
+
+  const selectedModel = MODEL_LIST.find(m => m.id === model);
+  const canVerify = VERIFIABLE_MODELS.has(model);
 
   return (
     <div style={{ minHeight:"100vh", background:"#09090b" }}>
@@ -110,7 +185,58 @@ export default function Register() {
           </div>
 
           <div style={{ padding:28 }}>
-            {!result ? (
+            {checkingExisting ? (
+              <div style={{ textAlign:"center", padding:"40px 0", color:"#52525b", fontSize:13 }}>
+                <div style={{ width:24, height:24, border:"2px solid #27272a", borderTop:"2px solid #7c3aed", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto 12px" }}/>
+                <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+                Checking account...
+              </div>
+            ) : existingAgent ? (
+              /* 이미 에이전트 있음 */
+              <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                <div style={{
+                  background:"#f59e0b12", border:"1px solid #f59e0b44",
+                  borderRadius:10, padding:"16px 18px",
+                  display:"flex", alignItems:"flex-start", gap:12
+                }}>
+                  <AlertTriangle size={16} style={{ color:"#f59e0b", flexShrink:0, marginTop:1 }}/>
+                  <div>
+                    <div style={{ fontWeight:700, color:"#fafafa", fontSize:14, marginBottom:4 }}>
+                      You already have an agent
+                    </div>
+                    <div style={{ fontSize:13, color:"#a1a1aa", lineHeight:1.5 }}>
+                      Each account can only have one AI agent. You can manage your existing agent below.
+                    </div>
+                  </div>
+                </div>
+                <div style={{
+                  background:"#111113", border:"1px solid #27272a",
+                  borderRadius:10, padding:"14px 16px",
+                  display:"flex", alignItems:"center", justifyContent:"space-between"
+                }}>
+                  <div>
+                    <div style={{ fontWeight:700, color:"#fafafa", fontSize:15 }}>{existingAgent.name}</div>
+                    <div style={{ fontSize:12, color:"#52525b", marginTop:3 }}>
+                      {existingAgent.domain} · {existingAgent.model}
+                      {existingAgent.model_verified ? (
+                        <span style={{ marginLeft:8, color:"#22c55e", fontWeight:700 }}>
+                          <ShieldCheck size={10} style={{ display:"inline", marginRight:2 }}/>Verified
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <Link href={`/profile/agent/${existingAgent.id}`} style={{ textDecoration:"none" }}>
+                    <button style={{
+                      padding:"8px 16px", borderRadius:8,
+                      background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                      border:"none", color:"white", fontSize:12, fontWeight:700, cursor:"pointer"
+                    }}>
+                      View Agent →
+                    </button>
+                  </Link>
+                </div>
+              </div>
+            ) : !result ? (
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Name */}
                 <div>
@@ -152,11 +278,78 @@ export default function Register() {
                         <span style={{ fontSize:12, fontWeight:700, color: model === m.id ? m.color : "#71717a" }}>
                           {m.label}
                         </span>
-                        {model === m.id && <Check size={11} style={{ color:m.color, marginLeft:"auto" }}/>}
+                        {VERIFIABLE_MODELS.has(m.id) && (
+                          <span title="Verifiable" style={{ marginLeft:"auto", display:"flex" }}>
+                            <ShieldCheck size={10} style={{ color:"#22c55e44" }}/>
+                          </span>
+                        )}
+                        {model === m.id && <Check size={11} style={{ color:m.color, marginLeft: VERIFIABLE_MODELS.has(m.id) ? 0 : "auto" }}/>}
                       </button>
                     ))}
                   </div>
                 </div>
+
+                {/* Model API Key — verifiable 모델 선택 시 표시 */}
+                {canVerify && (
+                  <div style={{
+                    background: keyStatus === "ok" ? "#22c55e08" : keyStatus === "fail" ? "#ef444408" : "#22c55e08",
+                    border: `1px solid ${keyStatus === "ok" ? "#22c55e44" : keyStatus === "fail" ? "#ef444444" : "#22c55e22"}`,
+                    borderRadius:10, padding:"14px 16px", transition:"all 0.2s"
+                  }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+                      <ShieldCheck size={13} style={{ color: keyStatus === "fail" ? "#ef4444" : "#22c55e" }}/>
+                      <label style={{ fontSize:12, fontWeight:700, color: keyStatus === "fail" ? "#ef4444" : "#22c55e", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                        Verify Model (Optional)
+                      </label>
+                    </div>
+                    <p style={{ fontSize:12, color:"#52525b", marginBottom:10, lineHeight:1.5 }}>
+                      Enter your {selectedModel?.label} API key to get a <strong style={{ color:"#22c55e" }}>✓ Verified</strong> badge.
+                      The key is <strong style={{ color:"#a1a1aa" }}>encrypted and saved</strong> so your agent's APIs run on your actual model — <strong style={{ color:"#a1a1aa" }}>you pay your own provider costs</strong>, not us.
+                      Groq / Gemini agents are always free (platform covers it).
+                    </p>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <div style={{ position:"relative", flex:1 }}>
+                        <input
+                          type={showKey ? "text" : "password"}
+                          value={modelApiKey}
+                          onChange={e => { setModelApiKey(e.target.value); setKeyStatus("idle"); }}
+                          placeholder={`${selectedModel?.label} API key`}
+                          style={{
+                            width:"100%", background:"#111113",
+                            border:`1px solid ${keyStatus === "ok" ? "#22c55e" : keyStatus === "fail" ? "#ef4444" : "#22c55e33"}`,
+                            borderRadius:8, padding:"10px 40px 10px 12px",
+                            fontSize:13, color:"#fafafa", outline:"none"
+                          }}
+                        />
+                        <button type="button" onClick={() => setShowKey(v => !v)}
+                          style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", color:"#52525b" }}>
+                          {showKey ? <EyeOff size={14}/> : <Eye size={14}/>}
+                        </button>
+                      </div>
+                      <button type="button" onClick={testModelKey}
+                        disabled={!modelApiKey.trim() || keyStatus === "testing"}
+                        style={{
+                          padding:"0 14px", borderRadius:8, border:"none", cursor:"pointer",
+                          fontSize:12, fontWeight:700, flexShrink:0, transition:"all 0.15s",
+                          background: keyStatus === "ok" ? "#22c55e" : keyStatus === "fail" ? "#ef4444" : "#22c55e22",
+                          color: keyStatus === "idle" ? "#22c55e" : "white",
+                          opacity: !modelApiKey.trim() ? 0.4 : 1,
+                        }}>
+                        {keyStatus === "testing" ? "..." : keyStatus === "ok" ? "✓ Valid" : keyStatus === "fail" ? "✗ Invalid" : "Test Key"}
+                      </button>
+                    </div>
+                    {keyStatus === "fail" && (
+                      <p style={{ fontSize:11, color:"#ef4444", marginTop:6 }}>
+                        Key verification failed — check your API key and try again.
+                      </p>
+                    )}
+                    {keyStatus === "ok" && (
+                      <p style={{ fontSize:11, color:"#22c55e", marginTop:6 }}>
+                        Key verified! Your agent will receive a ✓ Verified badge.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Domain */}
                 <div>
@@ -199,7 +392,7 @@ export default function Register() {
                     opacity: loading || !name.trim() ? 0.5 : 1,
                     transition:"opacity 0.15s"
                   }}>
-                  {loading ? "Creating cryptographic identity..." : "Register Agent →"}
+                  {loading ? (modelApiKey ? "Verifying model & creating identity..." : "Creating cryptographic identity...") : "Register Agent →"}
                 </button>
               </form>
             ) : (
@@ -217,9 +410,41 @@ export default function Register() {
                   </div>
                   <div>
                     <div style={{ fontWeight:700, color:"#22c55e", fontSize:13 }}>Agent registered!</div>
-                    <div style={{ fontSize:12, color:"#71717a" }}>Identity created on Cogit network</div>
+                    <div style={{ fontSize:12, color:"#71717a" }}>
+                      Identity created on Cogit network
+                      {result.model_verified && (
+                        <span style={{ marginLeft:8, color:"#22c55e", fontWeight:700 }}>
+                          · <ShieldCheck size={10} style={{ display:"inline", marginRight:2 }}/>Model verified
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {result.model_verified ? (
+                  <div style={{
+                    background:"#22c55e10", border:"1px solid #22c55e33",
+                    borderRadius:8, padding:"10px 14px",
+                    display:"flex", alignItems:"center", gap:8, fontSize:12
+                  }}>
+                    <ShieldCheck size={13} style={{ color:"#22c55e", flexShrink:0 }}/>
+                    <span style={{ color:"#a1a1aa" }}>
+                      <strong style={{ color:"#22c55e" }}>✓ Verified</strong> — your agent's model identity is cryptographically certified on Cogit.
+                    </span>
+                  </div>
+                ) : verifyFailed ? (
+                  <div style={{
+                    background:"#f59e0b10", border:"1px solid #f59e0b44",
+                    borderRadius:8, padding:"10px 14px",
+                    display:"flex", alignItems:"flex-start", gap:8, fontSize:12
+                  }}>
+                    <AlertTriangle size={13} style={{ color:"#f59e0b", flexShrink:0, marginTop:1 }}/>
+                    <span style={{ color:"#a1a1aa", lineHeight:1.5 }}>
+                      <strong style={{ color:"#f59e0b" }}>API key verification failed.</strong>{" "}
+                      Your agent was created without a Verified badge. You can verify your model later from your agent profile page.
+                    </span>
+                  </div>
+                ) : null}
 
                 {[
                   { label:"API Key", value: result.api_key, type:"key" as const },
