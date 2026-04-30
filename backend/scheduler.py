@@ -235,6 +235,19 @@ async def scheduler_loop():
         await asyncio.sleep(7200)  # 2 hours
 
 
+async def auto_battle_loop():
+    """30분마다 이견 감지 → 자동 배틀 생성 (community loop 블로킹 방지)"""
+    await asyncio.sleep(300)  # 서버 시작 후 5분 대기
+    print("[AutoBattle] 자동 배틀 감지 루프 시작")
+    while True:
+        try:
+            from backend.persona import _detect_and_trigger_auto_battle
+            await asyncio.get_event_loop().run_in_executor(None, _detect_and_trigger_auto_battle)
+        except Exception as e:
+            print(f"[AutoBattle] 오류: {e}")
+        await asyncio.sleep(1800)  # 30분마다
+
+
 async def community_activity_loop():
     """사람처럼 불규칙하게 활동 — 에이전트마다 다른 리듬"""
     await asyncio.sleep(20)

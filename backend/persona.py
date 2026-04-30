@@ -302,17 +302,14 @@ def _quality_vote_value(agent: dict, post: dict, rival_ids: set) -> int | None:
 
 # ── Algorithm 3: Disagreement detection → auto-battle trigger ────────────────
 
-_last_auto_battle: dict[str, float] = {}  # domain → last trigger timestamp
-
 def _detect_and_trigger_auto_battle():
-    """Find pairs of posts in the same domain with opposing signals → spawn battle."""
-    import time as _time
+    """Find pairs of posts in the same domain with opposing signals → spawn battle.
+    Rate-limit is stored in DB (battles table), so it survives server restarts."""
     conn = get_conn()
     try:
-        # Find domains with at least one low-scoring and one high-scoring post in last 6h
         controversial = conn.execute("""
             SELECT p1.domain,
-                   p1.id as low_post_id,  p1.agent_id as low_agent_id,
+                   p1.id as low_post_id, p1.agent_id as low_agent_id,
                    p1.raw_insight as low_text,
                    p2.id as high_post_id, p2.agent_id as high_agent_id
             FROM posts p1
@@ -337,11 +334,22 @@ def _detect_and_trigger_auto_battle():
     row = dict(controversial)
     domain = row["domain"]
 
-    # Rate-limit: one auto-battle per domain per 2 hours
-    now = _time.time()
-    if now - _last_auto_battle.get(domain, 0) < 7200:
-        return False
-    _last_auto_battle[domain] = now
+    # Rate-limit: DB-based check — survives server restarts
+    conn2 = get_conn()
+    recent = conn2.execute("""
+        SELECT created_at FROM battles
+        WHERE domain=? AND creator='auto'
+        ORDER BY created_at DESC LIMIT 1
+    """, (domain,)).fetchone()
+    conn2.close()
+    if recent:
+        from datetime import datetime as _dt
+        try:
+            last_time = _dt.fromisoformat(recent["created_at"])
+            if (_dt.utcnow() - last_time).total_seconds() < 7200:
+                return False
+        except Exception:
+            pass
 
     # Generate a debate question from the conflicting content
     question = groq_chat(
@@ -1470,13 +1478,6 @@ def run_community_cycle(max_agents: int = 8):
         log.append(entry)
         print(f"  {entry}")
         time.sleep(random.uniform(0.5, 2.0))
-
-    # 20% 확률로 이견 감지 → 자동 배틀 트리거
-    if random.random() < 0.20:
-        try:
-            _detect_and_trigger_auto_battle()
-        except Exception as e:
-            print(f"[AutoBattle] 감지 오류: {e}")
 
     return log
 

@@ -533,3 +533,41 @@ def trust_history(agent_id: str):
     conn.close()
     return [dict(r) for r in rows]
 
+
+@router.get("/citation-graph")
+def citation_graph(limit: int = 60):
+    """Return citation edges between agents for the influence graph UI."""
+    from backend.persona import get_citation_graph
+    return get_citation_graph(limit=limit)
+
+
+@router.get("/{agent_id}/citations")
+def agent_citations(agent_id: str):
+    """Return how many times this agent has been cited and by whom."""
+    conn = get_conn()
+    cited_by = conn.execute("""
+        SELECT fa.id as from_id, fa.name as from_name, fa.domain as from_domain,
+               COUNT(*) as weight
+        FROM agent_citations ac
+        JOIN agents fa ON fa.id = ac.from_agent_id
+        WHERE ac.to_agent_id = ?
+        GROUP BY ac.from_agent_id
+        ORDER BY weight DESC
+        LIMIT 20
+    """, (agent_id,)).fetchall()
+    cites = conn.execute("""
+        SELECT ta.id as to_id, ta.name as to_name, ta.domain as to_domain,
+               COUNT(*) as weight
+        FROM agent_citations ac
+        JOIN agents ta ON ta.id = ac.to_agent_id
+        WHERE ac.from_agent_id = ?
+        GROUP BY ac.to_agent_id
+        ORDER BY weight DESC
+        LIMIT 20
+    """, (agent_id,)).fetchall()
+    conn.close()
+    return {
+        "cited_by": [dict(r) for r in cited_by],
+        "cites": [dict(r) for r in cites],
+    }
+
