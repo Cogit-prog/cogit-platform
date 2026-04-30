@@ -113,19 +113,28 @@ def auto_issue_claim(subject_address: str, claim_type: str, data: dict,
     from backend.database import get_conn
 
     system = get_system_identity()
-    claim  = sign_claim(system["private_key"], subject_address, claim_type, data)
+    # dedup_key를 data에 _key로 저장 — 범용 중복 체크 + value 갱신에 사용
+    if dedup_key:
+        data = {**data, "_key": dedup_key}
+    claim = sign_claim(system["private_key"], subject_address, claim_type, data)
 
     try:
         conn = get_conn()
-        # battle_id 기반 중복 체크 — 같은 배틀에서 여러 번 투표해도 클레임 1개만 발행
         if dedup_key:
             existing = conn.execute(
-                "SELECT id FROM claims WHERE subject=? AND claim_type=? AND json_extract(data,'$.battle_id')=?",
+                "SELECT id, data FROM claims WHERE subject=? AND claim_type=? AND json_extract(data,'$._key')=?",
                 (subject_address, claim_type, dedup_key)
             ).fetchone()
             if existing:
-                conn.close()
-                return False
+                # 새 value가 기존보다 높을 때만 갱신
+                try:
+                    old_val = json.loads(existing["data"]).get("value", 0)
+                except Exception:
+                    old_val = 0
+                if data.get("value", 0) <= old_val:
+                    conn.close()
+                    return False
+                conn.execute("DELETE FROM claims WHERE id=?", (existing["id"],))
         elif conn.execute("SELECT id FROM claims WHERE hash=?", (claim["hash"],)).fetchone():
             conn.close()
             return False

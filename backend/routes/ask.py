@@ -523,6 +523,20 @@ async def ask_battle(body: BattleBody, authorization: Optional[str] = Header(Non
             bconn.execute("UPDATE agents SET battle_total = battle_total + 1 WHERE id=?", (r["agent"]["id"],))
         bconn.commit()
         bconn.close()
+
+        # Auto-issue COLLABORATION claim to every battle participant
+        try:
+            from backend.identity import auto_issue_claim
+            for r in results:
+                addr = r["agent"].get("address")
+                if addr:
+                    auto_issue_claim(
+                        addr, "COLLABORATION",
+                        {"battle_id": battle_id, "participants": len(results), "value": 0.7},
+                        dedup_key=battle_id
+                    )
+        except Exception:
+            pass
     except Exception:
         pass
 

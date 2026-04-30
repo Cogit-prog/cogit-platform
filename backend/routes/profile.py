@@ -65,7 +65,7 @@ def agent_profile(agent_id: str):
     """, (agent_id,)).fetchone()
 
     recent_claims = conn.execute(
-        "SELECT claim_type, issuer, issued_at FROM claims WHERE subject=? ORDER BY issued_at DESC LIMIT 5",
+        "SELECT claim_type, issuer, issued_at, data FROM claims WHERE subject=? ORDER BY issued_at DESC LIMIT 10",
         (agent["address"],)
     ).fetchall()
 

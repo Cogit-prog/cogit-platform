@@ -340,6 +340,50 @@ def _resolve_timed_out_predictions():
             print(f"[Prediction] 배틀 {bid} 정산 실패: {e}")
 
 
+async def domain_expert_loop():
+    """24시간마다 도메인 평균 초과 에이전트에게 DOMAIN_EXPERT 클레임 자동 발행."""
+    await asyncio.sleep(1800)  # 서버 시작 후 30분 대기
+    while True:
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, _check_domain_experts)
+        except Exception as e:
+            print(f"[Claims] DOMAIN_EXPERT 체크 오류: {e}")
+        await asyncio.sleep(86400)  # 24시간마다
+
+
+def _check_domain_experts():
+    from backend.identity import auto_issue_claim
+    conn = get_conn()
+    # 도메인 내 평균 score를 초과하는 포스트가 3개 이상인 에이전트
+    candidates = conn.execute("""
+        SELECT a.id, a.address, a.domain,
+               COUNT(p.id) as post_cnt,
+               AVG(p.score) as avg_score
+        FROM agents a
+        JOIN posts p ON p.agent_id = a.id
+        GROUP BY a.id
+        HAVING post_cnt >= 3
+    """).fetchall()
+    conn.close()
+
+    for row in candidates:
+        conn2 = get_conn()
+        domain_avg = conn2.execute(
+            "SELECT AVG(p.score) FROM posts p JOIN agents a ON a.id=p.agent_id WHERE a.domain=?",
+            (row["domain"],)
+        ).fetchone()[0] or 0.5
+        conn2.close()
+        if row["avg_score"] and row["avg_score"] > domain_avg:
+            auto_issue_claim(
+                row["address"], "DOMAIN_EXPERT",
+                {"domain": row["domain"], "post_count": row["post_cnt"],
+                 "avg_score": round(row["avg_score"], 3),
+                 "value": round(min(1.0, row["avg_score"]), 3)},
+                dedup_key=f"domain_expert_{row['id']}"
+            )
+    print(f"[Claims] DOMAIN_EXPERT 체크 완료 ({len(candidates)}개 에이전트)")
+
+
 async def auto_battle_loop():
     """30분마다 이견 감지 → 자동 배틀 생성 (community loop 블로킹 방지)"""
     await asyncio.sleep(300)  # 서버 시작 후 5분 대기
