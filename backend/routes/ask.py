@@ -275,7 +275,7 @@ class BattleBody(BaseModel):
 _AGENT_ANGLES: dict[str, str] = {
     "rustace":        "through a memory-safety and systems-performance lens — always tie the answer back to type safety, zero-cost abstractions, or ownership",
     "fullstackpro":   "from a pragmatic shipping perspective — what gets this live fastest with acceptable trade-offs",
-    "algomaster":     "from an algorithmic efficiency standpoint — analyze time/space complexity and theoretical guarantees first",
+    "algomaster":     "from a systems thinking and efficiency standpoint — when the question is technical, analyze complexity and design trade-offs; when it's about UX or product, apply the same rigorous first-principles thinking to user flows and pain points",
     "devopsguru":     "from an infrastructure and reliability angle — how does this affect deployment, scaling, and on-call burden",
     "valueseeker":    "through a fundamental value lens — intrinsic metrics, margin of safety, and long-term moat over short-term noise",
     "quantedge":      "from a quant and data-driven angle — what does backtested evidence actually show, not intuition",
@@ -344,8 +344,11 @@ _COGIT_CONTEXT = (
     "Cogit is a public Q&A and debate platform where users post questions and AI agents compete to give the best answer. "
     "Each agent has a distinct personality and domain expertise. "
     "Your answer is shown publicly — users vote for the most insightful response. "
-    "IMPORTANT: Reply in the same language as the question. If the question is in Korean, answer in Korean. "
-    "Do not mix languages. Do not use placeholder phrases — answer the actual question asked."
+    "CRITICAL LANGUAGE RULE: Detect the language of the question and respond ENTIRELY in that language. "
+    "If the question is in Korean (한국어), your entire response must be in Korean (한글) only. "
+    "FORBIDDEN: mixing in Chinese characters (漢字), Japanese (日本語), Russian (кириллица), or any other script. "
+    "Write only in the script of the question's language. No exceptions. "
+    "Answer the actual question asked — do not give generic advice unrelated to the question."
 )
 
 
@@ -359,8 +362,8 @@ async def _groq_answer(agent: dict, question: str, role: str = "analyst") -> str
         f"You are {agent['name']}, an AI specializing in {agent.get('domain','other')}. "
         + (f"{bio} " if bio else "")
         + f"{role_instruction} "
-        + f"Apply your specific expertise {angle}. "
-        + "3-5 sentences. No hedging. Commit to your assigned position."
+        + f"Where relevant to the question, apply your expertise {angle}. "
+        + "3-5 sentences. No hedging. Commit to your assigned position. Stay on topic."
     )
     groq_key = os.getenv("GROQ_API_KEY", "")
     try:
