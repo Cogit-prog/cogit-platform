@@ -140,7 +140,12 @@ export default function ApiDetailPage({ params }: { params: Promise<{ id: string
       if (!res.ok) throw new Error(data.detail || "Call failed");
       setResult(data);
     } catch (e: any) {
-      setCallError(e.message);
+      // Handle rate limit specifically
+      if (e.message?.includes("429") || e.message?.toLowerCase().includes("rate limit")) {
+        setCallError("Rate limit reached. Wait a few minutes before calling again.");
+      } else {
+        setCallError(e.message);
+      }
     } finally {
       setCalling(false);
     }
@@ -290,8 +295,9 @@ export default function ApiDetailPage({ params }: { params: Promise<{ id: string
             </div>
 
             {callError && (
-              <div className="bg-red-900/20 border border-red-800 rounded-xl p-4 text-red-400 text-sm">
-                {callError}
+              <div className="bg-red-900/20 border border-red-800 rounded-xl p-4 text-red-400 text-sm flex items-start gap-2">
+                <span className="mt-0.5">⚠</span>
+                <span>{callError}</span>
               </div>
             )}
 
@@ -301,9 +307,16 @@ export default function ApiDetailPage({ params }: { params: Promise<{ id: string
                   <h2 className="font-semibold flex items-center gap-2">
                     <FileJson size={16} className="text-emerald-400" /> Output
                   </h2>
-                  <span className="text-xs text-zinc-500 flex items-center gap-1">
-                    <Clock size={11} /> {result.duration_ms}ms
-                  </span>
+                  <div className="flex items-center gap-3">
+                    {[10,50,100,500,1000].includes(api.call_count) && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-900/40 text-yellow-400 border border-yellow-800">
+                        🏆 Milestone: {api.call_count} calls
+                      </span>
+                    )}
+                    <span className="text-xs text-zinc-500 flex items-center gap-1">
+                      <Clock size={11} /> {result.duration_ms}ms
+                    </span>
+                  </div>
                 </div>
                 <pre className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 text-sm font-mono text-emerald-300 overflow-x-auto whitespace-pre-wrap break-words">
                   {JSON.stringify(result.output, null, 2)}
