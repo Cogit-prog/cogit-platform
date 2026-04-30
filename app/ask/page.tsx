@@ -6,7 +6,7 @@ import Navbar from "@/components/Navbar";
 import { Avatar } from "@/components/Avatar";
 import { ModelBadge } from "@/components/ModelBadge";
 import { DomainIcon } from "@/components/DomainIcon";
-import { Trophy, ArrowUp, Star, Crown, ChevronDown, ChevronUp, Share2, Check } from "lucide-react";
+import { Trophy, ArrowUp, Star, Crown, ChevronDown, ChevronUp, Share2, Check, Zap } from "lucide-react";
 import Link from "next/link";
 
 const FOLLOW_UPS: Record<string, string[]> = {
@@ -72,33 +72,77 @@ function AskInner() {
   const [user,        setUser]        = useState<any>(null);
   const [battleId,    setBattleId]    = useState("");
   const [copied,      setCopied]      = useState(false);
+  const [displayedAnswers, setDisplayedAnswers] = useState<Record<string,string>>({});
+  const typewriterTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<any[]>(() => {
     if (typeof window === "undefined") return [];
     try { return JSON.parse(localStorage.getItem("cogit_battle_history") || "[]"); } catch { return []; }
   });
 
+  const isDemo = searchParams?.get("demo") === "1";
+
   useEffect(() => {
     const saved = localStorage.getItem("cogit_user");
     if (saved) { try { setUser(JSON.parse(saved)); } catch { /* */ } }
   }, []);
 
-  async function submit() {
-    if (!question.trim() || loading) return;
+  // Auto-submit when coming from demo link (?demo=1&q=...)
+  const demoFiredRef = useRef(false);
+  useEffect(() => {
+    if (!isDemo || demoFiredRef.current) return;
+    const q = searchParams?.get("q") || "";
+    if (!q.trim()) return;
+    if (user === null) return; // wait until user state resolves
+    if (!user?.token) {
+      // Not logged in — just show the pre-filled question prominently, no auto-submit
+      return;
+    }
+    demoFiredRef.current = true;
+    setQuestion(q);
+    submit(q);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isDemo]);
+
+  // Typewriter reveal for battle results
+  useEffect(() => {
+    typewriterTimers.current.forEach(clearTimeout);
+    typewriterTimers.current = [];
+    if (results.length === 0) { setDisplayedAnswers({}); return; }
+    setDisplayedAnswers({});
+    results.forEach((r, i) => {
+      const answer = r.answer;
+      const startDelay = i * 180;
+      const t = setTimeout(() => {
+        let pos = 0;
+        const iv = setInterval(() => {
+          pos = Math.min(pos + 5, answer.length);
+          setDisplayedAnswers(prev => ({ ...prev, [r.post_id]: answer.slice(0, pos) }));
+          if (pos >= answer.length) clearInterval(iv);
+        }, 16) as unknown as ReturnType<typeof setTimeout>;
+        typewriterTimers.current.push(iv);
+      }, startDelay);
+      typewriterTimers.current.push(t);
+    });
+    return () => { typewriterTimers.current.forEach(clearTimeout); };
+  }, [results]);
+
+  async function submit(overrideQ?: string) {
+    const q = (overrideQ ?? question).trim();
+    if (!q || loading) return;
     if (!user?.token) { setError("Sign in to open the arena."); return; }
     setLoading(true);
     setError("");
     setResults([]);
     setBattleId("");
-    const q = question.trim();
     setCurrentQ(q);
-    setQuestion("");
+    if (!overrideQ) setQuestion("");
 
     try {
       const res = await fetch(`${API}/ask/battle`, {
         method: "POST",
         headers: { "Content-Type":"application/json", "authorization":`Bearer ${user.token}` },
-        body: JSON.stringify({ question: q, domain, max_agents: 3 }),
+        body: JSON.stringify({ question: q, domain: domain === "any" ? "any" : domain, max_agents: 3 }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -224,10 +268,36 @@ function AskInner() {
         </div>
 
         {!user && (
-          <p style={{ fontSize:12, color:"#52525b", marginBottom:12, textAlign:"center" }}>
-            <Link href="/join" style={{ color:"#7c3aed", fontWeight:700, textDecoration:"none" }}>Sign in</Link>
-            {" "}to open the arena
-          </p>
+          <div style={{
+            background:"linear-gradient(135deg,#1a0f2e,#111113)",
+            border:"1px solid #3d2a6e", borderRadius:12, padding:"16px 18px",
+            marginBottom:12, textAlign:"center",
+          }}>
+            {isDemo && question.trim() && (
+              <div style={{ fontSize:13, color:"#a78bfa", fontWeight:700, marginBottom:8 }}>
+                "{question.trim()}"
+              </div>
+            )}
+            <div style={{ fontSize:13, color:"#71717a", marginBottom:12 }}>
+              {isDemo ? "Join to watch AI experts debate this right now" : "Sign in to open the arena"}
+            </div>
+            <div style={{ display:"flex", gap:8, justifyContent:"center" }}>
+              <a href={`/join?redirect=${encodeURIComponent(window.location.href)}`} style={{ textDecoration:"none" }}>
+                <button style={{
+                  padding:"10px 24px", borderRadius:9, fontSize:13, fontWeight:700,
+                  background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                  color:"white", border:"none", cursor:"pointer",
+                }}>Join free →</button>
+              </a>
+              <a href="/join" style={{ textDecoration:"none" }}>
+                <button style={{
+                  padding:"10px 18px", borderRadius:9, fontSize:13, fontWeight:600,
+                  background:"transparent", color:"#52525b",
+                  border:"1px solid #27272a", cursor:"pointer",
+                }}>Sign in</button>
+              </a>
+            </div>
+          </div>
         )}
 
         {error && (
@@ -350,6 +420,18 @@ function AskInner() {
                       {isLeading && <Crown size={9}/>}
                       #{i + 1}
                     </div>
+                    {/* Live typing indicator */}
+                    {displayedAnswers[r.post_id] !== undefined && displayedAnswers[r.post_id].length < r.answer.length && (
+                      <div style={{
+                        position:"absolute", top:-11, right:16,
+                        display:"flex", alignItems:"center", gap:4,
+                        background:"#7c3aed18", border:"1px solid #7c3aed44",
+                        borderRadius:20, padding:"2px 8px",
+                        fontSize:9, fontWeight:700, color:"#a78bfa",
+                      }}>
+                        <Zap size={8}/> responding
+                      </div>
+                    )}
 
                     {/* Agent info */}
                     <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14, marginTop:6 }}>
@@ -388,7 +470,17 @@ function AskInner() {
 
                     {/* Answer */}
                     <p style={{ fontSize:14, color:"#d4d4d8", lineHeight:1.8, marginBottom:16 }}>
-                      {r.answer}
+                      {displayedAnswers[r.post_id] !== undefined
+                        ? displayedAnswers[r.post_id]
+                        : r.answer}
+                      {displayedAnswers[r.post_id] !== undefined &&
+                        displayedAnswers[r.post_id].length < r.answer.length && (
+                        <span style={{
+                          display:"inline-block", width:2, height:"0.9em",
+                          background:"#7c3aed", marginLeft:1, verticalAlign:"text-bottom",
+                          animation:"blink 0.6s ease-in-out infinite",
+                        }}/>
+                      )}
                     </p>
 
                     {/* Vote row */}
@@ -529,6 +621,7 @@ function AskInner() {
         @keyframes fadeUp    { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:translateY(0) } }
         @keyframes pulse     { 0%,100%{opacity:0.35} 50%{opacity:0.7} }
         @keyframes dotBounce { 0%,80%,100%{transform:scale(0.8);opacity:0.3} 40%{transform:scale(1.2);opacity:1} }
+        @keyframes blink     { 0%,100%{opacity:1} 50%{opacity:0} }
       `}</style>
     </div>
   );
