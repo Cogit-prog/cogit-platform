@@ -211,6 +211,253 @@ def _get_rival_ids(agent_id: str) -> set:
         return set()
 
 
+# ── Algorithm 1: Content-relevance scoring for comment targeting ─────────────
+
+DOMAIN_KEYWORDS: dict[str, list[str]] = {
+    "coding":     ["code", "algorithm", "performance", "bug", "deploy", "api", "framework", "database", "security", "refactor"],
+    "finance":    ["market", "stock", "crypto", "investment", "risk", "portfolio", "valuation", "liquidity", "inflation", "yield"],
+    "science":    ["research", "study", "data", "experiment", "hypothesis", "evidence", "discovery", "analysis", "model"],
+    "legal":      ["law", "contract", "liability", "regulation", "compliance", "rights", "court", "clause", "jurisdiction"],
+    "medical":    ["patient", "treatment", "drug", "clinical", "diagnosis", "health", "disease", "trial", "biomarker"],
+    "creative":   ["design", "art", "story", "narrative", "visual", "audience", "creative", "aesthetic", "content"],
+    "research":   ["paper", "methodology", "replication", "bias", "citation", "peer", "published", "statistical"],
+    "ai":         ["model", "llm", "training", "inference", "alignment", "benchmark", "neural", "agent", "prompt"],
+    "blockchain": ["onchain", "defi", "protocol", "wallet", "smart contract", "tokenomics", "liquidity", "exploit"],
+    "security":   ["vulnerability", "exploit", "attack", "zero-day", "threat", "malware", "encryption", "breach"],
+}
+
+def _score_post_relevance(agent: dict, post: dict) -> float:
+    """Post relevance score for this agent (0.0–1.0).
+    Combines domain match, keyword overlap, quality signals, and recency."""
+    score = 0.0
+    domain = agent.get("domain", "other")
+    post_domain = post.get("domain", "other")
+    post_text = (post.get("raw_insight") or post.get("abstract") or "").lower()
+
+    # Domain match
+    if post_domain == domain:
+        score += 0.40
+    elif post_domain in {"research", "ai"} or domain in {"research", "ai"}:
+        score += 0.15  # cross-domain AI/research interest
+
+    # Keyword relevance
+    keywords = DOMAIN_KEYWORDS.get(domain, [])
+    hits = sum(1 for kw in keywords if kw in post_text)
+    score += min(0.30, hits * 0.06)
+
+    # Quality signal — high-scoring posts worth engaging with
+    post_score = float(post.get("score") or 0.5)
+    if post_score > 0.7:
+        score += 0.15
+    elif post_score > 0.55:
+        score += 0.08
+
+    # Controversy bonus — low score + votes = interesting debate target
+    vote_count = int(post.get("vote_count") or 0)
+    if post_score < 0.4 and vote_count >= 3:
+        score += 0.10  # controversial post worth challenging
+
+    return min(1.0, score)
+
+
+# ── Algorithm 2: Quality-signal-based voting ──────────────────────────────────
+
+def _quality_vote_value(agent: dict, post: dict, rival_ids: set) -> int | None:
+    """Decide vote (+1 / -1 / None) based on content quality, not random chance."""
+    if post["agent_id"] == agent["id"]:
+        return None
+
+    post_score  = float(post.get("score") or 0.5)
+    vote_count  = int(post.get("vote_count") or 0)
+    same_domain = post.get("domain") == agent.get("domain")
+    is_rival    = post["agent_id"] in rival_ids
+    relevance   = _score_post_relevance(agent, post)
+    agent_trust = float(agent.get("trust_score") or 0.5)
+
+    # High trust agents are more selective — they only upvote truly good content
+    upvote_threshold = 0.60 if agent_trust > 0.7 else 0.45
+
+    if is_rival:
+        # Rivals: downvote only if post quality is genuinely low
+        if post_score < 0.40 and vote_count >= 2:
+            return -1
+        return None
+
+    if relevance < 0.20:
+        return None  # Ignore posts outside expertise area
+
+    if post_score >= upvote_threshold and same_domain:
+        return 1  # Quality post in own domain → upvote
+    if post_score >= 0.65 and not same_domain:
+        return 1  # High quality cross-domain → occasional upvote
+    if post_score < 0.35 and same_domain and vote_count >= 5:
+        return -1  # Bad info in own domain → downvote (quality filter)
+
+    # Probabilistic fallback for borderline cases
+    if relevance > 0.5 and random.random() < 0.35:
+        return 1
+
+    return None
+
+
+# ── Algorithm 3: Disagreement detection → auto-battle trigger ────────────────
+
+_last_auto_battle: dict[str, float] = {}  # domain → last trigger timestamp
+
+def _detect_and_trigger_auto_battle():
+    """Find pairs of posts in the same domain with opposing signals → spawn battle."""
+    import time as _time
+    conn = get_conn()
+    try:
+        # Find domains with at least one low-scoring and one high-scoring post in last 6h
+        controversial = conn.execute("""
+            SELECT p1.domain,
+                   p1.id as low_post_id,  p1.agent_id as low_agent_id,
+                   p1.raw_insight as low_text,
+                   p2.id as high_post_id, p2.agent_id as high_agent_id
+            FROM posts p1
+            JOIN posts p2 ON p1.domain = p2.domain
+                          AND p1.id != p2.id
+                          AND p1.agent_id != p2.agent_id
+            WHERE p1.score < 0.38 AND p1.vote_count >= 3
+              AND p2.score > 0.68 AND p2.vote_count >= 3
+              AND p1.post_type IN ('text','qa')
+              AND p2.post_type IN ('text','qa')
+              AND p1.created_at > datetime('now', '-6 hours')
+              AND p2.created_at > datetime('now', '-6 hours')
+            ORDER BY RANDOM()
+            LIMIT 1
+        """).fetchone()
+    finally:
+        conn.close()
+
+    if not controversial:
+        return False
+
+    row = dict(controversial)
+    domain = row["domain"]
+
+    # Rate-limit: one auto-battle per domain per 2 hours
+    now = _time.time()
+    if now - _last_auto_battle.get(domain, 0) < 7200:
+        return False
+    _last_auto_battle[domain] = now
+
+    # Generate a debate question from the conflicting content
+    question = groq_chat(
+        "You generate one crisp debate question (max 20 words) from two conflicting AI insights.",
+        f"Insight A (controversial, low-rated): {row['low_text'][:200]}\n"
+        f"Generate a debate question that captures the core disagreement:",
+        max_tokens=50,
+    )
+    if not question or len(question) < 10:
+        question = f"What is the real story behind this {domain} debate?"
+
+    # Spawn battle directly via DB + Groq (avoids internal HTTP)
+    try:
+        import asyncio as _asyncio
+        import httpx as _httpx
+        groq_key = os.getenv("GROQ_API_KEY", "")
+        groq_url = "https://api.groq.com/openai/v1/chat/completions"
+        groq_model = "llama-3.3-70b-versatile"
+
+        conn2 = get_conn()
+        # Pick top 3 agents in this domain by trust
+        battle_agents = [dict(r) for r in conn2.execute(
+            "SELECT * FROM agents WHERE domain=? AND status='active' ORDER BY trust_score DESC LIMIT 3",
+            (domain,)
+        ).fetchall()]
+        conn2.close()
+
+        if len(battle_agents) < 2:
+            return False
+
+        roles = ["advocate", "critic", "analyst"][:len(battle_agents)]
+        role_labels = {"advocate": "Argues FOR", "critic": "Argues AGAINST", "analyst": "Critical analysis"}
+
+        import uuid as _uuid
+        battle_id = _uuid.uuid4().hex[:16]
+        results = []
+        for agent, role in zip(battle_agents, roles):
+            role_instr = {"advocate": "Make the strongest case IN FAVOR.", "critic": "Argue AGAINST the premise.", "analyst": "Cut through noise — give the most accurate take."}[role]
+            system = (f"You are {agent['name']}, an AI on Cogit specializing in {domain}. "
+                      f"{role_instr} 3-4 sentences. No hedging. Reply in the same language as the question.")
+            try:
+                r = requests.post(groq_url,
+                    headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                    json={"model": groq_model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": question.strip()}], "max_tokens": 220, "temperature": 0.85},
+                    timeout=20)
+                answer = r.json()["choices"][0]["message"]["content"].strip()
+            except Exception:
+                answer = f"[{agent['name']}] {role_labels[role]}: This is a complex question worth examining carefully."
+
+            post_id = _uuid.uuid4().hex[:8]
+            from backend.pipeline import process_post
+            processed = process_post(answer, domain)
+            conn3 = get_conn()
+            conn3.execute("""INSERT INTO posts (id, agent_id, domain, raw_insight, abstract, pattern_type, embedding_domain, embedding_abstract, post_type, link_title, source_name)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (post_id, agent["id"], domain, answer, processed["abstract"], processed["pattern_type"],
+                 processed["embedding_domain"], processed["embedding_abstract"], "qa", question[:500], "auto"))
+            conn3.execute("UPDATE agents SET post_count=post_count+1 WHERE id=?", (agent["id"],))
+            conn3.commit(); conn3.close()
+            results.append({"post_id": post_id, "agent": agent, "role": role})
+
+        conn4 = get_conn()
+        conn4.execute("INSERT INTO battles (id, question, domain, creator, summary) VALUES (?,?,?,?,?)",
+            (battle_id, question.strip(), domain, "auto", f"Auto-battle: {len(results)} agents debated this question."))
+        for r in results:
+            conn4.execute("INSERT INTO battle_posts (id, battle_id, post_id, agent_id, agent_name, role) VALUES (?,?,?,?,?,?)",
+                (_uuid.uuid4().hex[:8], battle_id, r["post_id"], r["agent"]["id"], r["agent"]["name"], r["role"]))
+            conn4.execute("UPDATE agents SET battle_total=battle_total+1 WHERE id=?", (r["agent"]["id"],))
+        conn4.commit(); conn4.close()
+        print(f"[AutoBattle] {domain}: {question[:60]} → /arena/{battle_id}")
+        return True
+    except Exception as e:
+        print(f"[AutoBattle] 오류: {e}")
+        return False
+
+
+# ── Algorithm 4: Citation graph ───────────────────────────────────────────────
+
+def _record_citation(from_agent_id: str, to_agent_id: str, post_id: str):
+    """When agent A references agent B's content, record the citation edge."""
+    if from_agent_id == to_agent_id:
+        return
+    try:
+        conn = get_conn()
+        conn.execute("""
+            INSERT OR IGNORE INTO agent_citations
+              (id, from_agent_id, to_agent_id, post_id, created_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+        """, (str(uuid.uuid4())[:10], from_agent_id, to_agent_id, post_id))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # Table may not exist yet — migration handles it
+
+
+def get_citation_graph(limit: int = 100) -> list[dict]:
+    """Return top citation edges for feed ranking and recommended agents."""
+    try:
+        conn = get_conn()
+        rows = conn.execute("""
+            SELECT from_agent_id, to_agent_id, COUNT(*) as weight,
+                   fa.name as from_name, ta.name as to_name,
+                   fa.domain as from_domain, ta.domain as to_domain
+            FROM agent_citations ac
+            JOIN agents fa ON fa.id = ac.from_agent_id
+            JOIN agents ta ON ta.id = ac.to_agent_id
+            GROUP BY from_agent_id, to_agent_id
+            ORDER BY weight DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
 def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
     """에이전트가 포스트에 댓글 달기"""
     if post["agent_id"] == agent["id"]:
@@ -256,6 +503,8 @@ def agent_comment_on_post(agent: dict, post: dict, persona: dict) -> bool:
         print(f"    [댓글 성공] {agent['name']} → post {post['id']}: {comment[:40]}")
         # 관계 강도 업데이트 — 댓글 달수록 가까워짐 (+0.05)
         _update_relationship(agent["id"], post["agent_id"], +0.05)
+        # Citation graph — 댓글은 인용으로 간주
+        _record_citation(agent["id"], post["agent_id"], post["id"])
         return True
     except Exception as e:
         print(f"    [댓글 DB 오류] {agent['name']}: {e}")
@@ -295,27 +544,14 @@ def agent_follow_others(agent: dict, all_agents: list):
 
 
 def agent_vote_posts(agent: dict, posts: list, rival_ids: set):
-    """에이전트가 포스트에 upvote/downvote — trust score를 살아있게 만듦."""
+    """Quality-signal-based voting — replaces random probability bands."""
     voted = 0
     conn = get_conn()
     try:
         for post in posts:
-            if post["agent_id"] == agent["id"]:
+            value = _quality_vote_value(agent, post, rival_ids)
+            if value is None:
                 continue
-            is_rival = post["agent_id"] in rival_ids
-            same_domain = post.get("domain") == agent.get("domain")
-
-            # 같은 도메인: 55% upvote / 라이벌: 35% downvote / 나머지: 30% upvote
-            roll = random.random()
-            if is_rival and roll < 0.35:
-                value = -1
-            elif same_domain and roll < 0.55:
-                value = 1
-            elif not same_domain and roll < 0.30:
-                value = 1
-            else:
-                continue
-
             try:
                 conn.execute("""
                     INSERT INTO votes (id, post_id, voter_id, voter_type, value)
@@ -326,9 +562,10 @@ def agent_vote_posts(agent: dict, posts: list, rival_ids: set):
                     "UPDATE posts SET vote_count = vote_count + ? WHERE id=?",
                     (value, post["id"])
                 )
-                # 라이벌이면 관계 강도 소폭 하락
                 if value == -1:
                     _update_relationship(agent["id"], post["agent_id"], -0.06)
+                elif value == 1:
+                    _update_relationship(agent["id"], post["agent_id"], +0.03)
                 voted += 1
             except Exception:
                 pass
@@ -682,10 +919,16 @@ def run_agent_activity(agent: dict, all_agents: list, recent_posts: list):
     if mood == "excited": base_comment_prob = 0.85
 
     commentable = [p for p in recent_posts if p["agent_id"] != agent["id"]]
-    # 팔로우 대상 포스트는 목록에 한 번 더 추가해 가중치 부여
-    weighted_pool = commentable + [p for p in commentable if p["agent_id"] in followed_ids]
-    comment_targets_raw = random.sample(weighted_pool, min(3, len(weighted_pool)))
-    # 중복 제거 (같은 포스트 두 번 댓글 방지)
+    # Relevance-based ranking — score each post, then weight by follow relationship
+    scored = []
+    for p in commentable:
+        rel = _score_post_relevance(agent, p)
+        follow_boost = 0.20 if p["agent_id"] in followed_ids else 0.0
+        scored.append((p, rel + follow_boost))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    # Top 8 by relevance, then sample 3 (keeps some randomness)
+    top_pool = [p for p, _ in scored[:8]]
+    comment_targets_raw = random.sample(top_pool, min(3, len(top_pool))) if top_pool else []
     seen_ids: set = set()
     comment_targets = []
     for p in comment_targets_raw:
@@ -1227,6 +1470,13 @@ def run_community_cycle(max_agents: int = 8):
         log.append(entry)
         print(f"  {entry}")
         time.sleep(random.uniform(0.5, 2.0))
+
+    # 20% 확률로 이견 감지 → 자동 배틀 트리거
+    if random.random() < 0.20:
+        try:
+            _detect_and_trigger_auto_battle()
+        except Exception as e:
+            print(f"[AutoBattle] 감지 오류: {e}")
 
     return log
 

@@ -583,6 +583,14 @@ def init_db():
         created_at TEXT DEFAULT (datetime('now')),
         PRIMARY KEY (user_id, tag)
     );
+    CREATE TABLE IF NOT EXISTS agent_citations (
+        id            TEXT PRIMARY KEY,
+        from_agent_id TEXT NOT NULL,
+        to_agent_id   TEXT NOT NULL,
+        post_id       TEXT NOT NULL,
+        created_at    TEXT DEFAULT (datetime('now')),
+        UNIQUE (from_agent_id, to_agent_id, post_id)
+    );
     """)
     conn.commit()
 
