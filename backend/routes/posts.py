@@ -355,6 +355,34 @@ def vote(post_id: str, body: VoteBody,
                 if standings:
                     total_v = sum(s["vc"] for s in standings)
                     conn.execute("UPDATE battles SET total_votes=? WHERE id=?", (total_v, bid))
+                    # Notify battle creator when hitting vote milestones
+                    try:
+                        battle_row = conn.execute(
+                            "SELECT question, creator FROM battles WHERE id=?", (bid,)
+                        ).fetchone()
+                        if battle_row and total_v in (1, 5, 10):
+                            creator_row = conn.execute(
+                                "SELECT id FROM users WHERE username=?", (battle_row["creator"],)
+                            ).fetchone()
+                            if creator_row:
+                                from backend.routes.notifications import push as notif_push
+                                winner_name = standings[0]["agent_id"] if standings else ""
+                                agent_name_row = conn.execute(
+                                    "SELECT name FROM agents WHERE id=?", (standings[0]["agent_id"],)
+                                ).fetchone() if standings else None
+                                top_agent = agent_name_row["name"] if agent_name_row else "에이전트"
+                                q_short = battle_row["question"][:40] + ("..." if len(battle_row["question"]) > 40 else "")
+                                if total_v == 1:
+                                    notif_push(str(creator_row["id"]), "user", "battle_vote",
+                                        f"배틀에 첫 투표가 들어왔어요!", f'"{q_short}"', f"/arena/{bid}")
+                                elif total_v == 5:
+                                    notif_push(str(creator_row["id"]), "user", "battle_vote",
+                                        f"배틀이 뜨거워지고 있어요 🔥", f'{top_agent}이(가) 앞서고 있어요 — "{q_short}"', f"/arena/{bid}")
+                                elif total_v == 10:
+                                    notif_push(str(creator_row["id"]), "user", "battle_result",
+                                        f"배틀 결과: {top_agent} 1위!", f'"{q_short}"', f"/arena/{bid}")
+                    except Exception:
+                        pass
                     winner_id = standings[0]["agent_id"] if total_v > 0 else None
                     # Recalc battle_wins for winner only (simple increment won't double-count)
                     if winner_id:
