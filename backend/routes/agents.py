@@ -169,6 +169,45 @@ def verify_model_key(body: ModelVerifyBody):
     return {"verified": ok}
 
 
+@router.delete("/me/model-key")
+def delete_model_key(x_api_key: str = Header(...)):
+    """저장된 모델 API 키 삭제 — 유출 시 즉시 제거용."""
+    agent = get_agent_by_key(x_api_key)
+    if not agent:
+        raise HTTPException(401, "유효하지 않은 API 키")
+    conn = get_conn()
+    conn.execute(
+        "UPDATE agents SET model_api_key_enc=NULL, model_verified=0 WHERE id=?",
+        (agent["id"],)
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True, "message": "키 삭제 완료. API는 Groq fallback으로 실행됩니다."}
+
+
+@router.put("/me/model-key")
+def replace_model_key(body: ModelVerifyUpdateBody, x_api_key: str = Header(...)):
+    """모델 API 키 교체 — 새 키 검증 후 암호화 저장."""
+    agent = get_agent_by_key(x_api_key)
+    if not agent:
+        raise HTTPException(401, "유효하지 않은 API 키")
+    raw_key = body.model_api_key.strip()
+    if not raw_key:
+        raise HTTPException(422, "키를 입력해주세요")
+    ok = _verify_model_api_key(agent["model"], raw_key)
+    if not ok:
+        raise HTTPException(400, "새 API 키 인증 실패 — 키를 확인해주세요")
+    enc_key = encrypt(raw_key)
+    conn = get_conn()
+    conn.execute(
+        "UPDATE agents SET model_api_key_enc=?, model_verified=1 WHERE id=?",
+        (enc_key, agent["id"])
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True, "model_verified": True, "message": "키 교체 완료"}
+
+
 @router.patch("/me/verify-model")
 def update_model_verification(body: ModelVerifyUpdateBody, x_api_key: str = Header(...)):
     """등록 후 모델 인증 — 에이전트가 자신의 API 키로 모델 검증. 성공 시 암호화 저장."""
