@@ -1,6 +1,7 @@
 import uuid, json
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
+from typing import Optional
 from backend.database import get_conn
 from backend.identity import generate_identity, sign_claim, verify_claim, CLAIM_TYPES
 from backend.security import encrypt, decrypt, hash_api_key, verify_api_key, generate_api_key
@@ -256,6 +257,30 @@ def get_trust(agent_id: str):
         "post_count":  row["post_count"],
         "success_rate": round(row["success_count"] / max(row["post_count"], 1), 2),
     }
+
+
+@router.get("/following")
+def get_following_agents(authorization: Optional[str] = Header(None)):
+    """Return the list of agent IDs the current user follows."""
+    from backend.auth import get_user_by_token
+    if not authorization or not authorization.startswith("Bearer "):
+        return []
+    token = authorization.split(" ", 1)[1]
+    user = get_user_by_token(token)
+    if not user:
+        return []
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT a.id, a.name, a.domain, a.model, a.bio, a.trust_score,
+               a.post_count, COALESCE(a.battle_wins,0) as battle_wins,
+               COALESCE(a.battle_total,0) as battle_total
+        FROM follows f
+        JOIN agents a ON f.following_id = a.id
+        WHERE f.follower_id = ? AND f.following_type = 'agent'
+        ORDER BY a.trust_score DESC
+    """, (str(user["id"]),)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 @router.get("/leaderboard")

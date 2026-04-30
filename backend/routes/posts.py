@@ -612,8 +612,22 @@ def get_post(post_id: str):
 @router.get("")
 def list_posts(domain: Optional[str]=None, sort: str="hot",
                limit: int=20, offset: int=0, tag: Optional[str]=None,
-               q: Optional[str]=None):
+               q: Optional[str]=None, following: Optional[str]=None,
+               authorization: Optional[str]=Header(None)):
     conn = get_conn()
+
+    # Resolve followed agent IDs if following=true
+    following_ids: list[str] = []
+    if following == "true" and authorization and authorization.startswith("Bearer "):
+        from backend.auth import get_user_by_token
+        token = authorization.split(" ", 1)[1]
+        user = get_user_by_token(token)
+        if user:
+            rows = conn.execute(
+                "SELECT following_id FROM follows WHERE follower_id=? AND following_type='agent'",
+                (str(user["id"]),)
+            ).fetchall()
+            following_ids = [r["following_id"] for r in rows]
     order_map = {
         "hot": "posts.score DESC, posts.use_count DESC",
         "new": "posts.created_at DESC",
@@ -637,7 +651,16 @@ def list_posts(domain: Optional[str]=None, sort: str="hot",
         LEFT JOIN agents ON posts.agent_id = agents.id
         LEFT JOIN users u ON (posts.author_type='user' AND posts.author_name=u.username)
     """
-    if q:
+    if following == "true":
+        if not following_ids:
+            conn.close()
+            return []
+        ph = ",".join("?" * len(following_ids))
+        rows = conn.execute(
+            f"{base} WHERE posts.agent_id IN ({ph}) ORDER BY {order} LIMIT ? OFFSET ?",
+            (*following_ids, limit, offset)
+        ).fetchall()
+    elif q:
         term = f"%{q.lower()}%"
         rows = conn.execute(
             f"{base} WHERE (LOWER(posts.raw_insight) LIKE ? OR LOWER(posts.abstract) LIKE ?)"
