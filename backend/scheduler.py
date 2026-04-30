@@ -235,6 +235,97 @@ async def scheduler_loop():
         await asyncio.sleep(7200)  # 2 hours
 
 
+async def prediction_timeout_loop():
+    """2시간마다 — 생성 24시간 지난 배틀의 미결 예측을 현재 순위로 강제 정산"""
+    await asyncio.sleep(600)
+    print("[Prediction] 타임아웃 정산 루프 시작")
+    while True:
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, _resolve_timed_out_predictions)
+        except Exception as e:
+            print(f"[Prediction] 타임아웃 정산 오류: {e}")
+        await asyncio.sleep(7200)  # 2시간마다
+
+
+def _resolve_timed_out_predictions():
+    """24h 지난 배틀에서 투표 5개 미달로 미결인 예측 강제 정산."""
+    conn = get_conn()
+    # 24시간 이상 지난 배틀 중 미결 예측이 있는 것
+    expired_battles = conn.execute("""
+        SELECT DISTINCT bp.battle_id
+        FROM battle_predictions bp
+        JOIN battles b ON b.id = bp.battle_id
+        WHERE bp.resolved = 0
+          AND b.created_at < datetime('now', '-24 hours')
+    """).fetchall()
+    conn.close()
+
+    for row in expired_battles:
+        bid = row["battle_id"]
+        try:
+            conn2 = get_conn()
+            # 현재 1위 에이전트
+            standings = conn2.execute("""
+                SELECT bp2.agent_id, COALESCE(SUM(p.vote_count), 0) as vc
+                FROM battle_posts bp2
+                LEFT JOIN posts p ON p.id = bp2.post_id
+                WHERE bp2.battle_id = ?
+                GROUP BY bp2.agent_id
+                ORDER BY vc DESC
+                LIMIT 1
+            """, (bid,)).fetchone()
+
+            pending = conn2.execute(
+                "SELECT id, user_id, predicted_agent FROM battle_predictions WHERE battle_id=? AND resolved=0",
+                (bid,)
+            ).fetchall()
+
+            if not pending:
+                conn2.close()
+                continue
+
+            if standings and standings["vc"] > 0:
+                # 투표가 있으면 현재 1위로 정산
+                winner_id = standings["agent_id"]
+                winner_name_row = conn2.execute("SELECT name FROM agents WHERE id=?", (winner_id,)).fetchone()
+                wname = winner_name_row["name"] if winner_name_row else "the leading agent"
+
+                for pred in pending:
+                    correct = 1 if pred["predicted_agent"] == winner_id else 0
+                    pts = 10 if correct else 0
+                    conn2.execute(
+                        "UPDATE battle_predictions SET resolved=1, correct=?, points_earned=? WHERE id=?",
+                        (correct, pts, pred["id"])
+                    )
+                    if correct:
+                        conn2.execute(
+                            "UPDATE users SET points=COALESCE(points,0)+10 WHERE id=?",
+                            (pred["user_id"],)
+                        )
+                        try:
+                            from backend.routes.notifications import push as notif_push
+                            notif_push(
+                                pred["user_id"], "user", "prediction_correct",
+                                "Correct prediction! +10pts",
+                                f"{wname} won the battle — you called it.",
+                                f"/arena/{bid}"
+                            )
+                        except Exception:
+                            pass
+            else:
+                # 투표가 없으면 그냥 만료 처리 (포인트 없음)
+                conn2.execute(
+                    "UPDATE battle_predictions SET resolved=1, correct=0, points_earned=0 WHERE battle_id=? AND resolved=0",
+                    (bid,)
+                )
+
+            conn2.commit()
+            conn2.close()
+            print(f"[Prediction] 배틀 {bid} 타임아웃 정산 완료 ({len(pending)}개 예측)")
+        except Exception as e:
+            print(f"[Prediction] 배틀 {bid} 정산 실패: {e}")
+
+
 async def auto_battle_loop():
     """30분마다 이견 감지 → 자동 배틀 생성 (community loop 블로킹 방지)"""
     await asyncio.sleep(300)  # 서버 시작 후 5분 대기

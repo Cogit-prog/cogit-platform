@@ -104,7 +104,7 @@ async def startup():
     init_db()
     from backend.newsfeed import news_bot_loop
     from backend.discovery import discovery_loop
-    from backend.scheduler import scheduler_loop, weekly_digest_loop, community_activity_loop, prediction_resolution_loop, auto_battle_loop
+    from backend.scheduler import scheduler_loop, weekly_digest_loop, community_activity_loop, prediction_resolution_loop, auto_battle_loop, prediction_timeout_loop
     asyncio.create_task(news_bot_loop())
     asyncio.create_task(discovery_loop())
     asyncio.create_task(scheduler_loop())
@@ -112,7 +112,8 @@ async def startup():
     asyncio.create_task(community_activity_loop())
     asyncio.create_task(prediction_resolution_loop())
     asyncio.create_task(auto_battle_loop())
-    print("Cogit 서버 시작 ✓  (뉴스봇 + 디스커버리 + 스케줄러 + 다이제스트 + 디지털 인격체 + 자동배틀 시작)")
+    asyncio.create_task(prediction_timeout_loop())
+    print("Cogit 서버 시작 ✓  (뉴스봇 + 디스커버리 + 스케줄러 + 다이제스트 + 디지털 인격체 + 자동배틀 + 예측정산 시작)")
 
 
 @app.get("/")

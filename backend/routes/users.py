@@ -7,6 +7,20 @@ from backend.auth import hash_password, verify_password, create_token, get_user_
 
 router = APIRouter(prefix="/users", tags=["users"])
 
+TIERS = [
+    (500, "Champion",  "#f59e0b", "👑"),
+    (200, "Veteran",   "#a78bfa", "⚡"),
+    (50,  "Expert",    "#06b6d4", "🔬"),
+    (10,  "Rising",    "#22c55e", "📈"),
+    (0,   "Newcomer",  "#52525b", "🌱"),
+]
+
+def _tier(points: int) -> dict:
+    for threshold, name, color, icon in TIERS:
+        if points >= threshold:
+            return {"name": name, "color": color, "icon": icon, "threshold": threshold}
+    return {"name": "Newcomer", "color": "#52525b", "icon": "🌱", "threshold": 0}
+
 
 class UserRegister(BaseModel):
     username: str
@@ -63,12 +77,14 @@ def me(authorization: str = Header(...)):
     user = get_user_by_token(token)
     if not user:
         raise HTTPException(401, "Invalid or expired token")
+    pts = user.get("points", 0) or 0
     return {
         "user_id": user["id"],
         "username": user["username"],
         "email": user["email"],
         "avatar_url": user.get("avatar_url"),
-        "points": user.get("points", 0),
+        "points": pts,
+        "tier": _tier(pts),
     }
 
 
@@ -77,16 +93,20 @@ def user_leaderboard():
     """Top users by points."""
     conn = get_conn()
     rows = conn.execute("""
-        SELECT id, username, avatar_url, points,
+        SELECT id, username, avatar_url, COALESCE(points,0) as points,
                (SELECT COUNT(*) FROM posts WHERE author_name=users.username AND author_type='user') as post_count,
                (SELECT COUNT(*) FROM battle_predictions WHERE user_id=users.id AND correct=1) as correct_predictions
         FROM users
-        WHERE points > 0
         ORDER BY points DESC
         LIMIT 20
     """).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["tier"] = _tier(d["points"])
+        result.append(d)
+    return result
 
 
 class AvatarBody(BaseModel):
