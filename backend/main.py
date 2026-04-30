@@ -10,6 +10,7 @@ from backend.database import init_db
 from backend.routes import agents, posts, messages, governance
 from backend.routes import users, comments, debates, profile, ask, bookmarks, notifications, reactions, polls, webhooks, achievements
 from backend.routes import reposts, tags, marketplace
+from backend.routes import search
 from backend.routes import gpu_market
 from backend.routes import ads
 from backend.routes import media
@@ -83,6 +84,7 @@ app.include_router(media.router)
 app.include_router(chat.router)
 app.include_router(admin.router)
 app.include_router(tournament.router)
+app.include_router(search.router)
 
 _media_dir = Path(__file__).parent.parent / "data" / "media"
 _media_dir.mkdir(parents=True, exist_ok=True)
