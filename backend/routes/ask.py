@@ -775,3 +775,120 @@ async def post_battle_comment(
     conn.commit()
     conn.close()
     return {"id": cid, "username": user["username"], "content": body.content.strip()}
+
+
+# ── Battle Predictions ─────────────────────────────────────────────────────────
+
+class PredictBody(BaseModel):
+    predicted_agent: str  # agent_id
+
+
+@router.post("/battle/{battle_id}/predict")
+async def predict_battle(
+    battle_id: str,
+    body: PredictBody,
+    authorization: Optional[str] = Header(None),
+):
+    """User picks which agent they think will win."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Login required")
+    user = get_user_by_token(authorization.split(" ", 1)[1])
+    if not user:
+        raise HTTPException(401, "Invalid token")
+
+    conn = get_conn()
+    battle = conn.execute("SELECT id FROM battles WHERE id=?", (battle_id,)).fetchone()
+    if not battle:
+        conn.close()
+        raise HTTPException(404, "Battle not found")
+    # Check agent is actually in this battle
+    in_battle = conn.execute(
+        "SELECT id FROM battle_posts WHERE battle_id=? AND agent_id=?",
+        (battle_id, body.predicted_agent)
+    ).fetchone()
+    if not in_battle:
+        conn.close()
+        raise HTTPException(400, "Agent not in this battle")
+    # One prediction per user per battle
+    existing = conn.execute(
+        "SELECT id FROM battle_predictions WHERE battle_id=? AND user_id=?",
+        (battle_id, str(user["id"]))
+    ).fetchone()
+    if existing:
+        conn.close()
+        return {"status": "already_predicted"}
+
+    pid = str(uuid.uuid4())[:10]
+    conn.execute(
+        "INSERT INTO battle_predictions (id, battle_id, user_id, predicted_agent) VALUES (?,?,?,?)",
+        (pid, battle_id, str(user["id"]), body.predicted_agent)
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "prediction_id": pid}
+
+
+@router.get("/battle/{battle_id}/predictions")
+async def get_battle_predictions(battle_id: str, authorization: Optional[str] = Header(None)):
+    """Return prediction split and current user's pick."""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT predicted_agent, COUNT(*) as cnt FROM battle_predictions WHERE battle_id=? GROUP BY predicted_agent",
+        (battle_id,)
+    ).fetchall()
+    total = sum(r["cnt"] for r in rows)
+    split = [{"agent_id": r["predicted_agent"], "count": r["cnt"],
+               "pct": round(r["cnt"] / total * 100) if total else 0} for r in rows]
+
+    my_pick = None
+    if authorization and authorization.startswith("Bearer "):
+        user = get_user_by_token(authorization.split(" ", 1)[1])
+        if user:
+            row = conn.execute(
+                "SELECT predicted_agent FROM battle_predictions WHERE battle_id=? AND user_id=?",
+                (battle_id, str(user["id"]))
+            ).fetchone()
+            if row:
+                my_pick = row["predicted_agent"]
+    conn.close()
+    return {"total": total, "split": split, "my_pick": my_pick}
+
+
+# ── Daily Featured Battle ──────────────────────────────────────────────────────
+
+@router.get("/daily-battle")
+async def get_daily_battle():
+    """Return today's featured battle — picked fresh each day."""
+    from datetime import date
+    today = str(date.today())
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT b.* FROM battles b WHERE b.daily_date=? LIMIT 1", (today,)
+    ).fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    # Mark a battle as today's daily (pick highest-voted from last 7 days)
+    conn2 = get_conn()
+    candidate = conn2.execute("""
+        SELECT b.id, b.question, b.domain, b.summary,
+               COALESCE(SUM(p.vote_count),0) as votes
+        FROM battles b
+        LEFT JOIN battle_posts bp ON bp.battle_id=b.id
+        LEFT JOIN posts p ON p.id=bp.post_id
+        WHERE (b.daily_date IS NULL OR b.daily_date != ?)
+          AND b.created_at > datetime('now','-7 days')
+        GROUP BY b.id
+        ORDER BY votes DESC, RANDOM()
+        LIMIT 1
+    """, (today,)).fetchone()
+    if candidate:
+        conn2.execute(
+            "UPDATE battles SET is_daily=1, daily_date=? WHERE id=?",
+            (today, candidate["id"])
+        )
+        conn2.commit()
+        conn2.close()
+        return dict(candidate)
+    conn2.close()
+    return None

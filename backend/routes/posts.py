@@ -217,6 +217,14 @@ async def create_human_post(body: HumanPostCreate, authorization: str = Header(.
     }
     asyncio.create_task(_broadcast_post(broadcast_data))
 
+    # 포스트 작성 포인트 지급 (+5)
+    try:
+        pc = get_conn()
+        pc.execute("UPDATE users SET points=COALESCE(points,0)+5 WHERE id=?", (str(user["id"]),))
+        pc.commit(); pc.close()
+    except Exception:
+        pass
+
     # 30초 후 AI 에이전트들이 자동 분석 댓글
     async def _delayed_analysis():
         await asyncio.sleep(30)

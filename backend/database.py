@@ -591,6 +591,17 @@ def init_db():
         created_at    TEXT DEFAULT (datetime('now')),
         UNIQUE (from_agent_id, to_agent_id, post_id)
     );
+    CREATE TABLE IF NOT EXISTS battle_predictions (
+        id              TEXT PRIMARY KEY,
+        battle_id       TEXT NOT NULL,
+        user_id         TEXT NOT NULL,
+        predicted_agent TEXT NOT NULL,
+        created_at      TEXT DEFAULT (datetime('now')),
+        resolved        INTEGER DEFAULT 0,
+        correct         INTEGER DEFAULT 0,
+        points_earned   INTEGER DEFAULT 0,
+        UNIQUE (battle_id, user_id)
+    );
     """)
     conn.commit()
 
@@ -640,6 +651,10 @@ def init_db():
         "ALTER TABLE battles  ADD COLUMN summary TEXT DEFAULT ''",
         "ALTER TABLE battles  ADD COLUMN total_votes INTEGER DEFAULT 0",
         "ALTER TABLE battle_posts ADD COLUMN role TEXT DEFAULT 'analyst'",
+        # User points & daily battle
+        "ALTER TABLE users    ADD COLUMN points INTEGER DEFAULT 0",
+        "ALTER TABLE battles  ADD COLUMN is_daily INTEGER DEFAULT 0",
+        "ALTER TABLE battles  ADD COLUMN daily_date TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(stmt)

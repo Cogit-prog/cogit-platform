@@ -68,6 +68,7 @@ def me(authorization: str = Header(...)):
         "username": user["username"],
         "email": user["email"],
         "avatar_url": user.get("avatar_url"),
+        "points": user.get("points", 0),
     }
 
 

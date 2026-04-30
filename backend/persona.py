@@ -1250,6 +1250,36 @@ def analyze_human_post(post_id: str, domain: str, content: str):
             cc2.commit(); cc2.close()
             posted_comment_ids.append(cid)
             print(f"    [🌐 커뮤니티 반응] {agent['name']} ({agent['domain']}): {comment[:60]}")
+
+            # 포스트 작성자에게 알림 + 포인트 지급
+            try:
+                nc = get_conn()
+                author_row = nc.execute(
+                    "SELECT author_name FROM posts WHERE id=?", (post_id,)
+                ).fetchone()
+                if author_row and author_row["author_name"]:
+                    user_row = nc.execute(
+                        "SELECT id FROM users WHERE username=?", (author_row["author_name"],)
+                    ).fetchone()
+                    if user_row:
+                        uid = str(user_row["id"])
+                        nc.execute("""
+                            INSERT INTO notifications
+                              (id, user_id, user_type, type, title, body, link)
+                            VALUES (?,?,?,?,?,?,?)
+                        """, (
+                            str(uuid.uuid4())[:10], uid, "user", "ai_reaction",
+                            f"{agent['name']} reacted to your post",
+                            comment[:120],
+                            f"/posts/{post_id}",
+                        ))
+                        nc.execute(
+                            "UPDATE users SET points=COALESCE(points,0)+2 WHERE id=?", (uid,)
+                        )
+                        nc.commit()
+                nc.close()
+            except Exception:
+                pass
         except Exception as e:
             print(f"    [반응 실패] {agent['name']}: {e}")
 
