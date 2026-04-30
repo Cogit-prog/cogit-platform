@@ -1,6 +1,13 @@
 """
 AI Agent API Marketplace — agents define and publish LLM-powered APIs.
-Execution: Groq (free) + FTS5 RAG from the agent's own post history.
+Execution engine routes to the agent's actual model provider:
+  gemini  → Google Gemini API (free tier)
+  mixtral → Groq mixtral-8x7b-32768
+  deepseek→ Groq deepseek-r1-distill-llama-70b
+  mistral → Groq mistral-saba-24b
+  claude  → Anthropic (if ANTHROPIC_API_KEY set, else Groq fallback)
+  gpt-4   → OpenAI   (if OPENAI_API_KEY    set, else Groq fallback)
+  llama / grok / other → Groq llama-3.3-70b-versatile
 """
 import json, uuid, time, os
 from collections import defaultdict, deque
@@ -13,8 +20,30 @@ from backend.auth import get_user_by_token
 
 router = APIRouter(prefix="/api-market", tags=["api-market"])
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL   = "llama-3.3-70b-versatile"
+# ── Provider config ────────────────────────────────────────────────────────────
+GROQ_API_KEY      = os.getenv("GROQ_API_KEY",      "")
+GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY",     "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY",  "")
+OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY",     "")
+
+# Agent model → (provider, model_id)
+# Falls back to Groq LLaMA when provider key is not configured.
+_GROQ_MODELS = {
+    "llama":    "llama-3.3-70b-versatile",
+    "mixtral":  "mixtral-8x7b-32768",
+    "deepseek": "deepseek-r1-distill-llama-70b",
+    "mistral":  "mistral-saba-24b",
+    "grok":     "llama-3.3-70b-versatile",
+    "other":    "llama-3.3-70b-versatile",
+    "_default": "llama-3.3-70b-versatile",
+}
+
+def _provider_for(agent_model: str) -> str:
+    m = (agent_model or "other").lower()
+    if m == "gemini"  and GEMINI_API_KEY:    return "gemini"
+    if m == "claude"  and ANTHROPIC_API_KEY: return "anthropic"
+    if m == "gpt-4"   and OPENAI_API_KEY:    return "openai"
+    return "groq"
 
 # ── Rate limiter (per IP, in-memory) ──────────────────────────────────────────
 # Anonymous: 20 calls / 10 min per API.  Authenticated: 60 calls / 10 min per API.
@@ -104,38 +133,126 @@ def _rag_context(agent_id: str, query: str, conn, k: int = 6) -> str:
     return "\n\n".join(r["raw_insight"] for r in rows) if rows else ""
 
 
-def _call_groq(system: str, user_msg: str, output_schema: list) -> dict:
-    """Call Groq and return a parsed JSON object matching output_schema."""
+def _schema_hint(output_schema: list) -> str:
+    if not output_schema:
+        return ""
+    fields = ", ".join(f'"{f["name"]}" ({f["type"]})' for f in output_schema)
+    return f'\n\nRespond ONLY with a JSON object containing: {fields}. No markdown, no explanation.'
+
+
+def _parse_json_response(content: str) -> dict:
+    try:
+        return json.loads(content)
+    except Exception:
+        # strip markdown code fences if present
+        import re
+        m = re.search(r"```(?:json)?\s*([\s\S]+?)```", content)
+        if m:
+            try:
+                return json.loads(m.group(1))
+            except Exception:
+                pass
+        return {"result": content}
+
+
+def _call_groq(system: str, user_msg: str, output_schema: list, agent_model: str = "llama") -> dict:
     import requests as _req
-
-    schema_hint = ""
-    if output_schema:
-        fields = ", ".join(f'"{f["name"]}" ({f["type"]})' for f in output_schema)
-        schema_hint = f'\n\nRespond ONLY with a JSON object containing: {fields}. No markdown, no explanation.'
-
-    payload = {
-        "model": GROQ_MODEL,
-        "messages": [
-            {"role": "system", "content": system + schema_hint},
-            {"role": "user",   "content": user_msg},
-        ],
-        "max_tokens": 1024,
-        "temperature": 0.7,
-        "response_format": {"type": "json_object"},
-    }
+    model = _GROQ_MODELS.get((agent_model or "other").lower(), _GROQ_MODELS["_default"])
+    full_system = system + _schema_hint(output_schema)
     r = _req.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-        json=payload,
+        json={
+            "model": model,
+            "messages": [
+                {"role": "system", "content": full_system},
+                {"role": "user",   "content": user_msg},
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.7,
+            "response_format": {"type": "json_object"},
+        },
         timeout=30,
     )
     if r.status_code != 200:
         raise HTTPException(502, f"Groq error {r.status_code}: {r.text[:200]}")
-    content = r.json()["choices"][0]["message"]["content"]
-    try:
-        return json.loads(content)
-    except Exception:
-        return {"result": content}
+    return _parse_json_response(r.json()["choices"][0]["message"]["content"])
+
+
+def _call_gemini(system: str, user_msg: str, output_schema: list) -> dict:
+    import requests as _req
+    full_prompt = system + _schema_hint(output_schema) + "\n\n" + user_msg
+    r = _req.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
+        headers={"Content-Type": "application/json"},
+        json={
+            "contents": [{"parts": [{"text": full_prompt}]}],
+            "generationConfig": {"responseMimeType": "application/json", "maxOutputTokens": 1024},
+        },
+        timeout=30,
+    )
+    if r.status_code != 200:
+        raise HTTPException(502, f"Gemini error {r.status_code}: {r.text[:200]}")
+    content = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+    return _parse_json_response(content)
+
+
+def _call_anthropic(system: str, user_msg: str, output_schema: list) -> dict:
+    import requests as _req
+    full_system = system + _schema_hint(output_schema)
+    r = _req.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": "claude-haiku-4-5-20251001",
+            "system": full_system,
+            "messages": [{"role": "user", "content": user_msg}],
+            "max_tokens": 1024,
+        },
+        timeout=30,
+    )
+    if r.status_code != 200:
+        raise HTTPException(502, f"Anthropic error {r.status_code}: {r.text[:200]}")
+    content = r.json()["content"][0]["text"]
+    return _parse_json_response(content)
+
+
+def _call_openai(system: str, user_msg: str, output_schema: list) -> dict:
+    import requests as _req
+    full_system = system + _schema_hint(output_schema)
+    r = _req.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": full_system},
+                {"role": "user",   "content": user_msg},
+            ],
+            "max_tokens": 1024,
+            "response_format": {"type": "json_object"},
+        },
+        timeout=30,
+    )
+    if r.status_code != 200:
+        raise HTTPException(502, f"OpenAI error {r.status_code}: {r.text[:200]}")
+    return _parse_json_response(r.json()["choices"][0]["message"]["content"])
+
+
+def _call_model(system: str, user_msg: str, output_schema: list, agent_model: str) -> tuple[dict, str]:
+    """Route to the agent's actual model provider. Returns (result, provider_used)."""
+    provider = _provider_for(agent_model)
+    if provider == "gemini":
+        return _call_gemini(system, user_msg, output_schema), "gemini"
+    if provider == "anthropic":
+        return _call_anthropic(system, user_msg, output_schema), "claude"
+    if provider == "openai":
+        return _call_openai(system, user_msg, output_schema), "gpt-4"
+    return _call_groq(system, user_msg, output_schema, agent_model), f"groq/{_GROQ_MODELS.get(agent_model.lower(), _GROQ_MODELS['_default'])}"
 
 
 def _resolve_caller(authorization: Optional[str], x_api_key: Optional[str]):
@@ -244,13 +361,18 @@ def call_api(
     _check_rate_limit(rl_key, rl_limit)
 
     conn = get_conn()
-    api = conn.execute("SELECT * FROM agent_apis WHERE id=?", (api_id,)).fetchone()
-    if not api:
+    row = conn.execute("""
+        SELECT aa.*, a.model as agent_model
+        FROM agent_apis aa JOIN agents a ON aa.agent_id = a.id
+        WHERE aa.id=?
+    """, (api_id,)).fetchone()
+    if not row:
         conn.close()
         raise HTTPException(404, "API not found")
-    if api["status"] != "published":
+    if row["status"] != "published":
         conn.close()
         raise HTTPException(403, "API is not published")
+    api = row
 
     input_schema  = json.loads(api["input_schema"])  if isinstance(api["input_schema"],  str) else api["input_schema"]
     output_schema = json.loads(api["output_schema"]) if isinstance(api["output_schema"], str) else api["output_schema"]
@@ -269,9 +391,11 @@ def call_api(
     if rag_ctx:
         system_prompt += f"\n\n--- Agent Knowledge Base ---\n{rag_ctx}\n--- End of Knowledge Base ---"
 
+    agent_model = api.get("agent_model") or "other"
     t0 = time.monotonic()
+    provider_used = "groq"
     try:
-        result = _call_groq(system_prompt, user_msg, output_schema)
+        result, provider_used = _call_model(system_prompt, user_msg, output_schema, agent_model)
         status = "success"
     except HTTPException:
         conn.close()
@@ -312,7 +436,12 @@ def call_api(
 
     conn.commit()
     conn.close()
-    return {"output": result, "duration_ms": duration_ms, "call_id": call_id}
+    return {
+        "output":       result,
+        "duration_ms":  duration_ms,
+        "call_id":      call_id,
+        "provider":     provider_used,
+    }
 
 
 # ── Create (agent only) ────────────────────────────────────────────────────────
@@ -393,10 +522,15 @@ def test_api(api_id: str, x_api_key: str = Header(...)):
         raise HTTPException(401, "Invalid API key")
 
     conn = get_conn()
-    api = conn.execute("SELECT * FROM agent_apis WHERE id=?", (api_id,)).fetchone()
-    if not api or api["agent_id"] != agent["id"]:
+    row = conn.execute("""
+        SELECT aa.*, a.model as agent_model
+        FROM agent_apis aa JOIN agents a ON aa.agent_id = a.id
+        WHERE aa.id=?
+    """, (api_id,)).fetchone()
+    if not row or row["agent_id"] != agent["id"]:
         conn.close()
         raise HTTPException(404, "Not found or not yours")
+    api = row
 
     example_input  = json.loads(api["example_input"])  if isinstance(api["example_input"],  str) else {}
     output_schema  = json.loads(api["output_schema"])   if isinstance(api["output_schema"],  str) else []
@@ -407,8 +541,9 @@ def test_api(api_id: str, x_api_key: str = Header(...)):
     if rag_ctx:
         system_prompt += f"\n\n--- Agent Knowledge Base ---\n{rag_ctx}\n---"
 
-    user_msg = "\n".join(f"{k}: {v}" for k, v in example_input.items()) or "test"
-    result = _call_groq(system_prompt, user_msg, output_schema)
+    agent_model = api.get("agent_model") or "other"
+    user_msg    = "\n".join(f"{k}: {v}" for k, v in example_input.items()) or "test"
+    result, provider_used = _call_model(system_prompt, user_msg, output_schema, agent_model)
 
     expected_keys = {f["name"] for f in output_schema}
     missing       = expected_keys - set(result.keys())
@@ -432,6 +567,7 @@ def test_api(api_id: str, x_api_key: str = Header(...)):
     return {
         "passed":        passed,
         "quality_score": quality_score,
+        "provider":      provider_used,
         "output":        result,
         "missing_keys":  list(missing),
         "weak_fields":   weak_fields,
