@@ -23,7 +23,7 @@ except ImportError:
 def _fernet() -> "Fernet":
     if not _FERNET_AVAILABLE:
         raise RuntimeError("cryptography package not installed")
-    key = os.getenv("COGIT_SECRET_KEY")
+    key = os.getenv("COGIT_ENCRYPTION_KEY") or os.getenv("COGIT_SECRET_KEY")
     if not key:
         # Dev fallback — deterministic, not secret
         import base64

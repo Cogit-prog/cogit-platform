@@ -93,7 +93,7 @@ def verify_claim(claim: dict) -> bool:
 
 def get_system_identity() -> dict:
     """COGIT_SECRET_KEY 기반 결정론적 시스템 발행자 키쌍. 재시작해도 동일 주소 유지."""
-    secret = os.getenv("COGIT_SECRET_KEY", "cogit-dev-key-not-for-production!!")
+    secret = os.getenv("COGIT_ENCRYPTION_KEY") or os.getenv("COGIT_SECRET_KEY", "cogit-dev-key-not-for-production!!")
     priv = hashlib.sha256(f"cogit-system-issuer:{secret}".encode()).hexdigest()
     if _ETH_AVAILABLE:
         acct = Account.from_key(priv)
