@@ -1,13 +1,15 @@
 "use client";
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Search, Trophy, LogIn, LogOut, Mail, Bookmark,
   Bot, MessageCircleQuestion, MoreHorizontal, Menu, X,
-  ShoppingCart, Cpu, Newspaper,
+  ShoppingCart, Cpu, Newspaper, Users, Settings,
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import { DomainIcon } from "./DomainIcon";
+import { API } from "@/lib/api";
 
 const DOMAINS = [
   "all","coding","finance","research","medical","legal","creative",
@@ -18,6 +20,7 @@ const DOMAINS = [
 const NAV_ITEMS = [
   { href:"/ask",         icon:<MessageCircleQuestion size={14}/>, label:"Ask AI"  },
   { href:"/arena",       icon:<Trophy size={14}/>,                label:"Arena"   },
+  { href:"/agents",      icon:<Users size={14}/>,                 label:"Agents"  },
   { href:"/leaderboard", icon:<Trophy size={14}/>,                label:"Leaders" },
   { href:"/digest",      icon:<Newspaper size={14}/>,             label:"Digest"  },
   { href:"/developers",  icon:<Bot size={14}/>,                   label:"Devs"    },
@@ -35,13 +38,23 @@ export default function Navbar({ onDomain, onSearch }: {
   const [agentKey, setAgentKey]   = useState<string|null>(null);
   const [showMore, setShowMore]   = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
+  const [userPoints, setUserPoints] = useState<number|null>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   useEffect(() => {
     const saved = localStorage.getItem("cogit_user");
     if (saved) { try { setUser(JSON.parse(saved)); } catch { /* */ } }
     setAgentKey(localStorage.getItem("cogit_agent_key"));
   }, []);
+
+  useEffect(() => {
+    if (!user?.token) return;
+    fetch(`${API}/users/me`, { headers: { authorization: `Bearer ${user.token}` } })
+      .then(r => r.json())
+      .then(d => { if (typeof d.points === "number") setUserPoints(d.points); })
+      .catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") setShowDrawer(false); }
@@ -124,7 +137,7 @@ export default function Navbar({ onDomain, onSearch }: {
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && onSearch?.(query)}
+              onKeyDown={e => { if (e.key === "Enter" && query.trim()) { router.push(`/search?q=${encodeURIComponent(query.trim())}`); onSearch?.(query); } }}
               placeholder="Search insights..."
               style={{
                 width:"100%", background:"#18181b",
@@ -154,21 +167,36 @@ export default function Navbar({ onDomain, onSearch }: {
                 <NotificationBell token={user.token}/>
                 <Link href="/inbox" className="hidden sm:block"><IconBtn icon={<Mail size={14}/>} title="Inbox"/></Link>
                 <Link href="/bookmarks" className="hidden sm:block"><IconBtn icon={<Bookmark size={14}/>} title="Saved"/></Link>
-                <div style={{
-                  display:"flex", alignItems:"center", gap:7,
-                  background:"#18181b", border:"1px solid #27272a",
-                  borderRadius:9, padding:"5px 10px",
-                }} className="hidden sm:flex">
+                <Link href="/settings" style={{ textDecoration:"none" }} className="hidden sm:flex">
                   <div style={{
-                    width:22, height:22, borderRadius:6, flexShrink:0,
-                    background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:10, fontWeight:800, color:"white",
-                  }}>
-                    {user.username?.[0]?.toUpperCase()}
+                    display:"flex", alignItems:"center", gap:7,
+                    background:"#18181b", border:"1px solid #27272a",
+                    borderRadius:9, padding:"5px 10px",
+                    cursor:"pointer", transition:"border-color 0.15s",
+                  }}
+                  onMouseEnter={e => ((e.currentTarget as HTMLElement).style.borderColor="#3f3f46")}
+                  onMouseLeave={e => ((e.currentTarget as HTMLElement).style.borderColor="#27272a")}
+                  >
+                    {user.avatar_url ? (
+                      <img src={user.avatar_url} alt={user.username} style={{ width:22, height:22, borderRadius:6, objectFit:"cover", flexShrink:0 }}/>
+                    ) : (
+                      <div style={{
+                        width:22, height:22, borderRadius:6, flexShrink:0,
+                        background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:10, fontWeight:800, color:"white",
+                      }}>
+                        {user.username?.[0]?.toUpperCase()}
+                      </div>
+                    )}
+                    <span style={{ fontSize:13, fontWeight:600, color:"#a1a1aa" }}>{user.username}</span>
+                    {userPoints !== null && userPoints > 0 && (
+                      <span style={{ fontSize:10, fontWeight:700, color:"#f59e0b", background:"#f59e0b15", borderRadius:6, padding:"1px 6px" }}>
+                        {userPoints}pt
+                      </span>
+                    )}
                   </div>
-                  <span style={{ fontSize:13, fontWeight:600, color:"#a1a1aa" }}>{user.username}</span>
-                </div>
+                </Link>
                 <button onClick={logout} title="Sign out" className="hidden sm:flex" style={{
                   width:32, height:32, borderRadius:8,
                   background:"transparent", border:"1px solid #27272a",

@@ -6,7 +6,7 @@ import Navbar from "@/components/Navbar";
 import { Avatar } from "@/components/Avatar";
 import { ModelBadge } from "@/components/ModelBadge";
 import { DomainIcon } from "@/components/DomainIcon";
-import { Trophy, ArrowUp, Star, Crown, Share2, Check, ExternalLink, MessageCircle, Send, RefreshCw } from "lucide-react";
+import { Trophy, ArrowUp, Star, Crown, Share2, Check, ExternalLink, MessageCircle, Send, RefreshCw, Sparkles, Zap } from "lucide-react";
 import Link from "next/link";
 
 const ROLE_COLORS: Record<string, string> = {
@@ -49,6 +49,9 @@ function ArenaInner() {
   const [comments, setComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState("");
   const [posting,  setPosting]  = useState(false);
+  const [followUp, setFollowUp] = useState("");
+  const [predictions, setPredictions] = useState<{total:number;split:any[];my_pick:string|null}|null>(null);
+  const [predicting, setPredicting] = useState(false);
   const commentRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -72,6 +75,35 @@ function ArenaInner() {
       .then(data => setComments(Array.isArray(data) ? data : []))
       .catch(() => null);
   }, [battleId]);
+
+  useEffect(() => {
+    if (!battleId) return;
+    const saved = localStorage.getItem("cogit_user");
+    const headers: Record<string,string> = {};
+    if (saved) { try { const u = JSON.parse(saved); if (u.token) headers["authorization"] = `Bearer ${u.token}`; } catch { /* */ } }
+    fetch(`${API}/ask/battle/${battleId}/predictions`, { headers })
+      .then(r => r.json())
+      .then(data => setPredictions(data))
+      .catch(() => null);
+  }, [battleId]);
+
+  async function handlePredict(agentId: string) {
+    if (!user?.token || predicting) return;
+    setPredicting(true);
+    try {
+      await fetch(`${API}/ask/battle/${battleId}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "authorization": `Bearer ${user.token}` },
+        body: JSON.stringify({ predicted_agent: agentId }),
+      });
+      const res = await fetch(`${API}/ask/battle/${battleId}/predictions`, {
+        headers: { "authorization": `Bearer ${user.token}` },
+      });
+      const data = await res.json();
+      setPredictions(data);
+    } catch { /**/ }
+    setPredicting(false);
+  }
 
   async function handleVote(postId: string) {
     if (!user?.token) return;
@@ -214,6 +246,77 @@ function ArenaInner() {
                 <p style={{ fontSize:12, color:"#a1a1aa", lineHeight:1.6, margin:0, fontStyle:"italic" }}>
                   {battle.summary}
                 </p>
+              </div>
+            )}
+
+            {/* Prediction widget */}
+            {results.length > 0 && (
+              <div style={{
+                background:"#111113", border:"1px solid #2d1f4e",
+                borderRadius:12, padding:"14px 16px", marginBottom:16,
+              }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+                  <Zap size={12} style={{ color:"#a78bfa" }}/>
+                  <span style={{ fontSize:11, fontWeight:700, color:"#a78bfa", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                    Predict the winner
+                  </span>
+                  {predictions && predictions.total > 0 && (
+                    <span style={{ fontSize:10, color:"#3f3f46", marginLeft:"auto" }}>
+                      {predictions.total} prediction{predictions.total !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+
+                {predictions?.my_pick ? (
+                  <div>
+                    <div style={{ fontSize:11, color:"#52525b", marginBottom:8 }}>Your pick is in — current split:</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                      {results.map(r => {
+                        const entry = predictions.split.find((s:any) => s.agent_id === r.agent.id);
+                        const pct = entry?.pct ?? 0;
+                        const isMyPick = r.agent.id === predictions.my_pick;
+                        return (
+                          <div key={r.agent.id} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            <span style={{ fontSize:11, fontWeight:700, color: isMyPick ? "#a78bfa" : "#52525b", width:110, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                              {isMyPick ? "✦ " : ""}{r.agent.name}
+                            </span>
+                            <div style={{ flex:1, height:6, background:"#1f1f23", borderRadius:3, overflow:"hidden" }}>
+                              <div style={{ width:`${pct}%`, height:"100%", background: isMyPick ? "#7c3aed" : "#27272a", borderRadius:3, transition:"width 0.5s ease" }}/>
+                            </div>
+                            <span style={{ fontSize:10, color:"#52525b", width:32, textAlign:"right" }}>{pct}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize:11, color:"#52525b", marginBottom:8 }}>
+                      {user ? "Who will win? +10 pts if correct" : <><Link href="/join" style={{ color:"#7c3aed", fontWeight:700, textDecoration:"none" }}>Sign in</Link> to predict and earn points</>}
+                    </div>
+                    {user && (
+                      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                        {results.map(r => (
+                          <button
+                            key={r.agent.id}
+                            onClick={() => handlePredict(r.agent.id)}
+                            disabled={predicting}
+                            style={{
+                              padding:"6px 14px", borderRadius:8, fontSize:11, fontWeight:700,
+                              background:"#1a1030", border:"1px solid #3d2a6e",
+                              color:"#a78bfa", cursor: predicting ? "default" : "pointer",
+                              transition:"all 0.12s", opacity: predicting ? 0.5 : 1,
+                            }}
+                            onMouseEnter={e => { if (!predicting) (e.currentTarget.style.background="#2d1f4e"); }}
+                            onMouseLeave={e => { if (!predicting) (e.currentTarget.style.background="#1a1030"); }}
+                          >
+                            {r.agent.name} wins
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -396,8 +499,56 @@ function ArenaInner() {
               </div>
             </div>
 
+            {/* Follow-up question */}
+            <div style={{
+              marginTop:32, background:"#111113",
+              border:"1px solid #27272a", borderRadius:16, padding:20,
+            }}>
+              <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:14 }}>
+                <Sparkles size={14} style={{ color:"#a78bfa" }}/>
+                <span style={{ fontSize:12, fontWeight:700, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                  Follow-up Battle
+                </span>
+              </div>
+              <p style={{ fontSize:12, color:"#52525b", margin:"0 0 12px", lineHeight:1.6 }}>
+                이 배틀에서 더 파고들고 싶은 게 있나요? 새 질문으로 이어서 배틀하세요.
+              </p>
+              <div style={{ display:"flex", gap:8 }}>
+                <input
+                  value={followUp}
+                  onChange={e => setFollowUp(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && followUp.trim()) {
+                      window.location.href = `/ask?q=${encodeURIComponent(followUp.trim())}&domain=${battle.domain}`;
+                    }
+                  }}
+                  placeholder={`"${battle.question.slice(0, 40)}..."에 대한 후속 질문`}
+                  style={{
+                    flex:1, background:"#18181b", border:"1px solid #27272a", borderRadius:10,
+                    padding:"10px 14px", fontSize:13, color:"#e4e4e7", outline:"none",
+                    transition:"border-color 0.15s",
+                  }}
+                  onFocus={e => (e.target.style.borderColor="#7c3aed")}
+                  onBlur={e  => (e.target.style.borderColor="#27272a")}
+                />
+                <Link
+                  href={followUp.trim() ? `/ask?q=${encodeURIComponent(followUp.trim())}&domain=${battle.domain}` : "#"}
+                  style={{
+                    display:"flex", alignItems:"center", gap:6,
+                    padding:"10px 16px", borderRadius:10, fontSize:13, fontWeight:700,
+                    background: followUp.trim() ? "linear-gradient(135deg,#7c3aed,#06b6d4)" : "#1f1f23",
+                    color: followUp.trim() ? "white" : "#3f3f46",
+                    textDecoration:"none", transition:"all 0.15s", flexShrink:0,
+                    pointerEvents: followUp.trim() ? "auto" : "none",
+                  }}
+                >
+                  <Send size={13}/> 배틀
+                </Link>
+              </div>
+            </div>
+
             {/* CTAs */}
-            <div style={{ marginTop:32, display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
+            <div style={{ marginTop:16, display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
               <Link href={`/ask?q=${encodeURIComponent(battle.question)}&domain=${battle.domain}`}
                 style={{
                   display:"inline-flex", alignItems:"center", gap:8,

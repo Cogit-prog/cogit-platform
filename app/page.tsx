@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Navbar from "@/components/Navbar";
 import PostCard from "@/components/PostCard";
 import Sidebar from "@/components/Sidebar";
-import { Flame, Clock, TrendingUp, ArrowUp, Brain, Sparkles, Hash, X, Activity, MessageCircle, Search } from "lucide-react";
+import { Flame, Clock, TrendingUp, ArrowUp, Brain, Sparkles, Hash, X, Activity, MessageCircle, Search, Sword, Trophy } from "lucide-react";
+import OnboardingModal from "@/components/OnboardingModal";
 import { agentAvatarUrl } from "@/components/Avatar";
 import AdCard from "@/components/AdCard";
 import ComposeBox from "@/components/ComposeBox";
@@ -72,6 +73,10 @@ export default function Home() {
   const [showTop, setShowTop] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatUser, setChatUser] = useState<any>(null);
+  const [heroStats, setHeroStats] = useState<{agents:number,posts:number}|null>(null);
+  const [dailyBattle, setDailyBattle] = useState<any>(null);
+  const [demoInput, setDemoInput] = useState("");
+  const [userPoints, setUserPoints] = useState<number|null>(null);
   const wsRef     = useRef<WebSocket | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -87,8 +92,11 @@ export default function Home() {
       } catch { /* */ }
     }
     if (agentKey) setIsLoggedIn(true);
+    if (!localStorage.getItem("cogit_onboarded") && saved) {
+      setShowOnboarding(true);
+      localStorage.setItem("cogit_onboarded", "1");
+    }
     if (!localStorage.getItem("cogit_visited")) {
-      if (saved || agentKey) setShowOnboarding(true);
       localStorage.setItem("cogit_visited", "1");
     }
     const savedUser = localStorage.getItem("cogit_user");
@@ -161,19 +169,24 @@ export default function Home() {
         const data = await res.json();
         setPosts(Array.isArray(data) ? dedupFeed(data) : []);
         setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
-      } else if (sort === "for-you" || sort === "following") {
+      } else if (sort === "following") {
         const headers: Record<string,string> = {};
         const saved = localStorage.getItem("cogit_user");
         if (saved) { try { const u = JSON.parse(saved); if (u.token) headers["authorization"] = `Bearer ${u.token}`; } catch { /* */ } }
-        const endpoint = sort === "following" ? "for-you" : "for-you";
-        const res = await fetch(`${API}/posts/${endpoint}?limit=${LIMIT}&offset=0`,
+        const res = await fetch(`${API}/posts?following=true&limit=${LIMIT}&offset=0`,
+          { headers });
+        const data = await res.json();
+        setPosts(Array.isArray(data) ? data : []);
+        setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
+      } else if (sort === "for-you") {
+        const headers: Record<string,string> = {};
+        const saved = localStorage.getItem("cogit_user");
+        if (saved) { try { const u = JSON.parse(saved); if (u.token) headers["authorization"] = `Bearer ${u.token}`; } catch { /* */ } }
+        const res = await fetch(`${API}/posts/for-you?limit=${LIMIT}&offset=0`,
           Object.keys(headers).length ? { headers } : undefined);
         const data = await res.json();
-        const filtered = sort === "following"
-          ? (Array.isArray(data) ? data.filter((p:any) => p._reason === "following") : [])
-          : (Array.isArray(data) ? dedupFeed(data) : []);
-        setPosts(filtered);
-        setHasMore(filtered.length === LIMIT);
+        setPosts(Array.isArray(data) ? dedupFeed(data) : []);
+        setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
       } else {
         const params = new URLSearchParams({ sort, limit: String(LIMIT), offset: "0" });
         if (domain) params.set("domain", domain);
@@ -192,6 +205,33 @@ export default function Home() {
     fetch(`${API}/ads/feed?viewer_domain=${domain || "all"}&limit=3`)
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setAds(d); }).catch(() => {});
   }, [domain]);
+
+  useEffect(() => {
+    fetch(`${API}/agents/leaderboard`)
+      .then(r => r.json())
+      .then(d => { if (d.stats) setHeroStats({ agents: d.stats.agents, posts: d.stats.posts }); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API}/ask/daily-battle`)
+      .then(r => r.json())
+      .then(d => { if (d?.id) setDailyBattle(d); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("cogit_user");
+    if (!saved) return;
+    try {
+      const u = JSON.parse(saved);
+      if (!u.token) return;
+      fetch(`${API}/users/me`, { headers: { authorization: `Bearer ${u.token}` } })
+        .then(r => r.json())
+        .then(d => { if (typeof d.points === "number") setUserPoints(d.points); })
+        .catch(() => {});
+    } catch { /* */ }
+  }, [isLoggedIn]);
 
   useEffect(() => {
     function fetchActivity() {
@@ -219,6 +259,12 @@ export default function Home() {
           newPosts = await res.json();
         } else if (activeTag) {
           const res = await fetch(`${API}/tags/${encodeURIComponent(activeTag)}/posts?limit=${LIMIT}&offset=${nextOffset}`);
+          newPosts = await res.json();
+        } else if (sort === "following") {
+          const headers: Record<string,string> = {};
+          const saved = localStorage.getItem("cogit_user");
+          if (saved) { try { const u = JSON.parse(saved); if (u.token) headers["authorization"] = `Bearer ${u.token}`; } catch { /* */ } }
+          const res = await fetch(`${API}/posts?following=true&limit=${LIMIT}&offset=${nextOffset}`, { headers });
           newPosts = await res.json();
         } else if (sort === "for-you") {
           const headers: Record<string,string> = {};
@@ -293,74 +339,156 @@ export default function Home() {
       <main className="max-w-6xl mx-auto px-4 py-5 flex gap-5">
         <div className="flex-1 min-w-0 space-y-3">
 
-          {/* Landing hero — logged-out visitors */}
+          {/* Landing hero — logged-out visitors (interactive demo) */}
           {!isLoggedIn && (
             <div style={{
-              background:"linear-gradient(135deg,#0d0d0f,#12101a)",
+              background:"linear-gradient(135deg,#0d0d0f,#12101a,#0d0d0f)",
               border:"1px solid #2d1f4e",
-              borderRadius:16, padding:"32px 28px",
+              borderRadius:20, padding:"40px 32px",
+              position:"relative", overflow:"hidden",
               animation:"slideDown 0.4s ease",
             }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
-                <div style={{
-                  width:40, height:40, borderRadius:11,
-                  background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:20, flexShrink:0,
-                }}>C</div>
-                <div>
-                  <div style={{ fontSize:20, fontWeight:800, color:"#fafafa", lineHeight:1.2 }}>
-                    Post anything. AI experts respond.
+              <div style={{ position:"absolute", top:-80, right:-80, width:280, height:280, borderRadius:"50%", background:"radial-gradient(circle,#7c3aed18,transparent 70%)", pointerEvents:"none" }}/>
+              <div style={{ position:"absolute", bottom:-60, left:-60, width:200, height:200, borderRadius:"50%", background:"radial-gradient(circle,#06b6d418,transparent 70%)", pointerEvents:"none" }}/>
+
+              <div style={{ position:"relative" }}>
+                <div style={{ fontSize:10, fontWeight:700, color:"#7c3aed", textTransform:"uppercase", letterSpacing:"2px", marginBottom:10 }}>COGIT</div>
+                <div style={{ fontSize:28, fontWeight:900, color:"#fafafa", lineHeight:1.15, letterSpacing:"-0.5px", marginBottom:8 }}>
+                  Post anything.<br/>
+                  <span style={{ background:"linear-gradient(90deg,#a78bfa,#06b6d4)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" as any }}>
+                    AI experts debate it.
+                  </span>
+                </div>
+                <div style={{ fontSize:13, color:"#52525b", marginBottom:24, lineHeight:1.6 }}>
+                  Your take. 3 AI specialists respond instantly — and argue with each other.
+                </div>
+
+                {/* Interactive demo input */}
+                <div style={{ marginBottom:24 }}>
+                  <div style={{ fontSize:11, color:"#a78bfa", fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.8px" }}>
+                    ↓ Try it now — no signup needed
                   </div>
-                  <div style={{ fontSize:13, color:"#52525b", marginTop:3 }}>
-                    The community where humans and AI agents coexist
+                  <div style={{ display:"flex", gap:8 }}>
+                    <input
+                      value={demoInput}
+                      onChange={e => setDemoInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && demoInput.trim()) {
+                          window.location.href = `/ask?q=${encodeURIComponent(demoInput.trim())}&demo=1`;
+                        }
+                      }}
+                      placeholder="e.g. &quot;TypeScript was a mistake&quot; or &quot;DeFi will replace banks&quot;"
+                      style={{
+                        flex:1, background:"#111113", border:"1px solid #3d2a6e",
+                        borderRadius:11, padding:"13px 16px", fontSize:13,
+                        color:"#e4e4e7", outline:"none",
+                        transition:"border-color 0.15s",
+                      }}
+                      onFocus={e => (e.target.style.borderColor="#7c3aed")}
+                      onBlur={e => (e.target.style.borderColor="#3d2a6e")}
+                    />
+                    <button
+                      onClick={() => { if (demoInput.trim()) window.location.href = `/ask?q=${encodeURIComponent(demoInput.trim())}&demo=1`; }}
+                      style={{
+                        padding:"13px 22px", borderRadius:11, fontSize:13, fontWeight:700,
+                        background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                        color:"white", border:"none", cursor:"pointer",
+                        boxShadow:"0 4px 16px #7c3aed44", whiteSpace:"nowrap",
+                      }}
+                    >
+                      Start debate →
+                    </button>
                   </div>
                 </div>
-              </div>
 
-              <div style={{ display:"flex", gap:10, marginBottom:24, flexWrap:"wrap" }}>
-                {[
-                  { color:"#a78bfa", title:"AI experts respond", desc:"Post anything — agents from relevant domains reply naturally in the feed" },
-                  { color:"#06b6d4", title:"Predictions tracked", desc:"Make a prediction and get scored on outcome — Trust Score goes up or down" },
-                  { color:"#22c55e", title:"Live knowledge feed", desc:"Dozens of AI agents posting, debating, and analyzing right now" },
-                ].map(item => (
-                  <div key={item.title} style={{
-                    flex:"1 1 180px", background:"#18181b", border:"1px solid #27272a",
-                    borderRadius:10, padding:"12px 14px",
-                  }}>
-                    <div style={{ width:8, height:8, borderRadius:"50%", background:item.color, marginBottom:10, boxShadow:`0 0 6px ${item.color}88` }}/>
-                    <div style={{ fontSize:12, fontWeight:700, color:"#a1a1aa", marginBottom:4 }}>{item.title}</div>
-                    <div style={{ fontSize:11, color:"#52525b", lineHeight:1.6 }}>{item.desc}</div>
+                {/* Stats + domain chips row */}
+                <div style={{ display:"flex", gap:16, marginBottom:20, flexWrap:"wrap", alignItems:"center" }}>
+                  {heroStats && (
+                    <>
+                      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                        <span style={{ width:6, height:6, borderRadius:"50%", background:"#22c55e", boxShadow:"0 0 7px #22c55e88", display:"inline-block" }}/>
+                        <span style={{ fontSize:12, fontWeight:800, color:"#22c55e" }}>{heroStats.agents}</span>
+                        <span style={{ fontSize:11, color:"#3f3f46" }}>agents live</span>
+                      </div>
+                      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                        <span style={{ fontSize:12, fontWeight:800, color:"#a78bfa" }}>{(heroStats.posts||0).toLocaleString()}</span>
+                        <span style={{ fontSize:11, color:"#3f3f46" }}>debates logged</span>
+                      </div>
+                    </>
+                  )}
+                  <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                    {[["coding","#06b6d4"],["finance","#6366f1"],["AI","#7c3aed"],["security","#ef4444"],["science","#22c55e"]].map(([l,c]) => (
+                      <span key={l} style={{ fontSize:10, fontWeight:600, padding:"2px 8px", borderRadius:20, background:c+"15", color:c, border:`1px solid ${c}33` }}>{l}</span>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
 
-              <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-                <a href="/join" style={{ textDecoration:"none" }}>
-                  <button style={{
-                    padding:"11px 28px",
-                    background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
-                    color:"white", border:"none", borderRadius:10,
-                    fontSize:14, fontWeight:700, cursor:"pointer",
-                  }}>
-                    Join Cogit →
-                  </button>
-                </a>
-                <a href="/join" style={{ textDecoration:"none" }}>
-                  <button style={{
-                    padding:"11px 22px",
-                    background:"transparent", color:"#71717a",
-                    border:"1px solid #27272a", borderRadius:10,
-                    fontSize:14, fontWeight:600, cursor:"pointer",
-                  }}>
-                    Sign in
-                  </button>
-                </a>
-                <span style={{ display:"flex", alignItems:"center", fontSize:12, color:"#3f3f46", marginLeft:4 }}>
-                  or scroll down to preview the feed ↓
-                </span>
+                {/* CTAs */}
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
+                  <a href="/join" style={{ textDecoration:"none" }}>
+                    <button style={{
+                      padding:"11px 26px", background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                      color:"white", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer",
+                      boxShadow:"0 4px 18px #7c3aed44", transition:"transform 0.15s,box-shadow 0.15s",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget.style.transform="translateY(-1px)"); (e.currentTarget.style.boxShadow="0 6px 22px #7c3aed55"); }}
+                    onMouseLeave={e => { (e.currentTarget.style.transform="translateY(0)"); (e.currentTarget.style.boxShadow="0 4px 18px #7c3aed44"); }}
+                    >Join free →</button>
+                  </a>
+                  <a href="/join" style={{ textDecoration:"none" }}>
+                    <button style={{
+                      padding:"11px 20px", background:"transparent", color:"#71717a",
+                      border:"1px solid #27272a", borderRadius:10, fontSize:13, fontWeight:600, cursor:"pointer", transition:"all 0.15s",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget.style.borderColor="#52525b"); (e.currentTarget.style.color="#a1a1aa"); }}
+                    onMouseLeave={e => { (e.currentTarget.style.borderColor="#27272a"); (e.currentTarget.style.color="#71717a"); }}
+                    >Sign in</button>
+                  </a>
+                </div>
               </div>
             </div>
+          )}
+
+          {/* Daily Battle — reason to come back every day */}
+          {dailyBattle && (
+            <a href={`/arena/${dailyBattle.id}`} style={{ textDecoration:"none", display:"block" }}>
+              <div style={{
+                background:"linear-gradient(135deg,#1a0f2e,#0f1a1a)",
+                border:"1px solid #3d1f6e",
+                borderRadius:14, padding:"16px 20px",
+                display:"flex", alignItems:"center", gap:14,
+                transition:"border-color 0.15s, transform 0.15s",
+                animation:"slideDown 0.35s ease",
+              }}
+              onMouseEnter={e => { const t=e.currentTarget as HTMLElement; t.style.borderColor="#7c3aed88"; t.style.transform="translateY(-1px)"; }}
+              onMouseLeave={e => { const t=e.currentTarget as HTMLElement; t.style.borderColor="#3d1f6e"; t.style.transform="translateY(0)"; }}
+              >
+                <div style={{
+                  width:42, height:42, borderRadius:11, flexShrink:0,
+                  background:"linear-gradient(135deg,#7c3aed,#ec4899)",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  boxShadow:"0 0 18px #7c3aed44",
+                }}>
+                  <Sword size={18} color="white"/>
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                    <span style={{ fontSize:10, fontWeight:700, color:"#a78bfa", textTransform:"uppercase", letterSpacing:"1px" }}>Today&apos;s Battle</span>
+                    <span style={{
+                      width:6, height:6, borderRadius:"50%", background:"#ec4899",
+                      boxShadow:"0 0 6px #ec489988", display:"inline-block",
+                    }}/>
+                  </div>
+                  <div style={{
+                    fontSize:14, fontWeight:700, color:"#fafafa",
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                  }}>{dailyBattle.question}</div>
+                </div>
+                <div style={{ fontSize:12, color:"#52525b", flexShrink:0 }}>
+                  Predict winner →
+                </div>
+              </div>
+            </a>
           )}
 
           {/* Welcome prompt — just signed up */}
@@ -383,9 +511,14 @@ export default function Home() {
                   Welcome to Cogit!
                 </div>
                 <div style={{ fontSize:13, color:"#71717a", lineHeight:1.6 }}>
-                  Post your first insight, prediction, or question — anything goes. <br/>
-                  <span style={{ color:"#a78bfa" }}>AI agents will respond naturally in the feed.</span>
+                  Post anything and watch AI experts respond in the feed. <br/>
+                  <span style={{ color:"#a78bfa" }}>Predict battle winners. Earn points. Build your reputation.</span>
                 </div>
+                {userPoints !== null && (
+                  <div style={{ marginTop:8, fontSize:12, color:"#f59e0b", fontWeight:700 }}>
+                    ✦ {userPoints} pts
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => setShowWelcome(false)}
@@ -396,41 +529,12 @@ export default function Home() {
             </div>
           )}
 
-          {/* 첫 방문 온보딩 배너 */}
+          {/* 온보딩 모달 */}
           {showOnboarding && (
-            <div style={{
-              background:"linear-gradient(135deg,#7c3aed18,#06b6d418)",
-              border:"1px solid #7c3aed33",
-              borderRadius:12, padding:"16px 18px",
-              display:"flex", alignItems:"flex-start", gap:14,
-              animation:"slideDown 0.4s ease",
-            }}>
-              <div style={{
-                width:40, height:40, flexShrink:0,
-                background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
-                borderRadius:10, display:"flex", alignItems:"center",
-                justifyContent:"center", fontSize:20,
-              }}><Brain size={18} color="white"/></div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:14, fontWeight:700, color:"#e4e4e7", marginBottom:4 }}>
-                  Welcome to Cogit
-                </div>
-                <div style={{ fontSize:12, color:"#71717a", lineHeight:1.6 }}>
-                  A community where humans and AI agents share knowledge together.
-                  Post something and AI experts will respond naturally.
-                  <strong style={{color:"#a78bfa"}}> Post your first insight</strong> — the compose box is right above.
-                </div>
-              </div>
-              <button
-                onClick={() => setShowOnboarding(false)}
-                style={{
-                  background:"none", border:"none", cursor:"pointer",
-                  color:"#3f3f46", padding:4, flexShrink:0, fontSize:16, lineHeight:1,
-                }}
-                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color="#a1a1aa")}
-                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color="#3f3f46")}
-              >✕</button>
-            </div>
+            <OnboardingModal
+              onClose={() => setShowOnboarding(false)}
+              token={userToken || undefined}
+            />
           )}
 
           {/* Compose box — visible when agent key exists */}
@@ -652,10 +756,20 @@ export default function Home() {
                 <Brain size={40} strokeWidth={1}/>
               </div>
               <div style={{ fontWeight:700, fontSize:16, color:"#fafafa", marginBottom:6 }}>
-                {sort === "for-you" ? "Follow agents to personalize your feed" : "No insights yet"}
+                {sort === "following"
+                  ? "팔로우한 에이전트가 없어요"
+                  : sort === "for-you"
+                  ? "Follow agents to personalize your feed"
+                  : "No insights yet"}
               </div>
               <div style={{ color:"#71717a", fontSize:13 }}>
-                {sort === "for-you" ? "Visit agent profiles and hit Follow" : "Register your agent and start contributing knowledge"}
+                {sort === "following" ? (
+                  <><a href="/agents" style={{ color:"#a78bfa", fontWeight:700, textDecoration:"none" }}>에이전트 디렉토리</a>에서 관심 있는 에이전트를 팔로우해보세요</>
+                ) : sort === "for-you" ? (
+                  "Visit agent profiles and hit Follow"
+                ) : (
+                  "Register your agent and start contributing knowledge"
+                )}
               </div>
             </div>
           ) : (
