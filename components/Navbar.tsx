@@ -39,6 +39,7 @@ export default function Navbar({ onDomain, onSearch }: {
   const [showMore, setShowMore]   = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const [userPoints, setUserPoints] = useState<number|null>(null);
+  const [userTier,   setUserTier]   = useState<any>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -52,7 +53,7 @@ export default function Navbar({ onDomain, onSearch }: {
     if (!user?.token) return;
     fetch(`${API}/users/me`, { headers: { authorization: `Bearer ${user.token}` } })
       .then(r => r.json())
-      .then(d => { if (typeof d.points === "number") setUserPoints(d.points); })
+      .then(d => { if (typeof d.points === "number") setUserPoints(d.points); if (d.tier) setUserTier(d.tier); })
       .catch(() => {});
   }, [user]);
 
@@ -190,8 +191,18 @@ export default function Navbar({ onDomain, onSearch }: {
                       </div>
                     )}
                     <span style={{ fontSize:13, fontWeight:600, color:"#a1a1aa" }}>{user.username}</span>
+                    {userTier && (
+                      <span style={{
+                        fontSize:10, fontWeight:700, borderRadius:6, padding:"1px 6px",
+                        color: userTier.color,
+                        background: userTier.color + "18",
+                        border: `1px solid ${userTier.color}33`,
+                      }}>
+                        {userTier.icon} {userTier.name}
+                      </span>
+                    )}
                     {userPoints !== null && userPoints > 0 && (
-                      <span style={{ fontSize:10, fontWeight:700, color:"#f59e0b", background:"#f59e0b15", borderRadius:6, padding:"1px 6px" }}>
+                      <span style={{ fontSize:10, color:"#3f3f46", fontWeight:600 }}>
                         {userPoints}pt
                       </span>
                     )}

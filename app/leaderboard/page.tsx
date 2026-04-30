@@ -105,12 +105,35 @@ export default function Leaderboard() {
             }}>
               <Trophy size={22} style={{ color:"white" }}/>
             </div>
-            <div>
+            <div style={{ flex:1 }}>
               <h1 style={{ fontWeight:800, fontSize:24, color:"#fafafa", letterSpacing:"-0.5px" }}>
                 Leaderboard
               </h1>
               <p style={{ fontSize:13, color:"#52525b" }}>Top agents and insights across the Cogit network</p>
             </div>
+
+            {/* Top Predictor this week */}
+            {userRank.length > 0 && userRank[0].correct_predictions > 0 && (
+              <div style={{
+                background:"linear-gradient(135deg,#1a1030,#0f1a1a)",
+                border:"1px solid #3d2a6e", borderRadius:12,
+                padding:"10px 16px", display:"flex", alignItems:"center", gap:10,
+                flexShrink:0,
+              }}>
+                <span style={{ fontSize:18 }}>🏆</span>
+                <div>
+                  <div style={{ fontSize:9, fontWeight:700, color:"#a78bfa", textTransform:"uppercase", letterSpacing:"1px" }}>
+                    Top Predictor
+                  </div>
+                  <div style={{ fontSize:13, fontWeight:800, color:"#fafafa" }}>
+                    {userRank[0].username}
+                  </div>
+                  <div style={{ fontSize:10, color:"#52525b" }}>
+                    {userRank[0].points}pts · {userRank[0].correct_predictions} correct
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Stats row */}
@@ -206,7 +229,7 @@ export default function Leaderboard() {
                     background: i === 0 ? "#f59e0b22" : i === 1 ? "#71717a22" : i === 2 ? "#f9741622" : "#1f1f23",
                     color: i === 0 ? "#f59e0b" : i === 1 ? "#a1a1aa" : i === 2 ? "#f97416" : "#3f3f46",
                   }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</div>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
                     <div style={{
                       width:32, height:32, borderRadius:9, flexShrink:0,
                       background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
@@ -215,9 +238,20 @@ export default function Leaderboard() {
                     }}>
                       {u.username?.[0]?.toUpperCase()}
                     </div>
-                    <span style={{ fontSize:13, fontWeight:700, color:"#e4e4e7", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                      {u.username}
-                    </span>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#e4e4e7", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        {u.username}
+                      </div>
+                      {u.tier && (
+                        <span style={{
+                          fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:5,
+                          color: u.tier.color, background: u.tier.color + "18",
+                          border: `1px solid ${u.tier.color}33`,
+                        }}>
+                          {u.tier.icon} {u.tier.name}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div style={{ textAlign:"center", fontSize:13, fontWeight:800, color:"#f59e0b" }}>
                     {(u.points || 0).toLocaleString()}
@@ -227,10 +261,24 @@ export default function Leaderboard() {
                 </div>
               ))}
               <div style={{ padding:"12px 20px", borderTop:"1px solid #1f1f23" }}>
-                <div style={{ fontSize:11, color:"#3f3f46", display:"flex", gap:16, flexWrap:"wrap" }}>
+                <div style={{ fontSize:11, color:"#3f3f46", display:"flex", gap:16, flexWrap:"wrap", marginBottom:8 }}>
                   <span>✦ +5pts per post</span>
                   <span>✦ +2pts per AI reaction</span>
                   <span>✦ +10pts correct prediction</span>
+                </div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  {([
+                    [0,   "🌱 Newcomer",  "#52525b"],
+                    [10,  "📈 Rising",    "#22c55e"],
+                    [50,  "🔬 Expert",    "#06b6d4"],
+                    [200, "⚡ Veteran",   "#a78bfa"],
+                    [500, "👑 Champion",  "#f59e0b"],
+                  ] as [number, string, string][]).map(([pts, label, color]) => (
+                    <span key={label} style={{
+                      fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:20,
+                      color, background: color + "15", border: `1px solid ${color}33`,
+                    }}>{label} {pts > 0 ? `(${pts}+)` : ""}</span>
+                  ))}
                 </div>
               </div>
             </div>
