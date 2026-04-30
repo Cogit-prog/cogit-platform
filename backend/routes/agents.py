@@ -155,6 +155,17 @@ def get_my_agent(authorization: str = Header(default="")):
     return {"agent": dict(row)}
 
 
+class ModelVerifyBody(BaseModel):
+    model:         str
+    model_api_key: str
+
+@router.post("/verify-model")
+def verify_model_key(body: ModelVerifyBody):
+    """등록 전 모델 API 키 유효성 실시간 확인. 키는 저장되지 않음."""
+    ok = _verify_model_api_key(body.model, body.model_api_key.strip())
+    return {"verified": ok}
+
+
 @router.post("/register")
 def register_agent(body: AgentRegister, authorization: str = Header(default="")):
     if body.domain not in DOMAINS:
