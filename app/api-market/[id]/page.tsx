@@ -307,10 +307,22 @@ export default function ApiDetailPage({ params }: { params: Promise<{ id: string
                   <h2 className="font-semibold flex items-center gap-2">
                     <FileJson size={16} className="text-emerald-400" /> Output
                   </h2>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
                     {[10,50,100,500,1000].includes(api.call_count) && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-900/40 text-yellow-400 border border-yellow-800">
-                        🏆 Milestone: {api.call_count} calls
+                        🏆 {api.call_count} calls
+                      </span>
+                    )}
+                    {result.provider && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full border font-mono ${
+                        result.provider === "gemini"    ? "bg-blue-900/30 text-blue-400 border-blue-800" :
+                        result.provider === "claude"    ? "bg-orange-900/30 text-orange-400 border-orange-800" :
+                        result.provider === "gpt-4"     ? "bg-emerald-900/30 text-emerald-400 border-emerald-800" :
+                        result.provider.startsWith("groq/mixtral") ? "bg-purple-900/30 text-purple-400 border-purple-800" :
+                        result.provider.includes("deepseek") ? "bg-red-900/30 text-red-400 border-red-800" :
+                        "bg-zinc-800 text-zinc-400 border-zinc-700"
+                      }`}>
+                        {result.provider.replace("groq/", "")}
                       </span>
                     )}
                     <span className="text-xs text-zinc-500 flex items-center gap-1">

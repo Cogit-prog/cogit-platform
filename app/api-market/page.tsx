@@ -74,9 +74,24 @@ function ApiCard({ api }: { api: any }) {
           </span>
           <StarRating avg={api.avg_rating} count={api.rating_count ?? 0} />
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-          <Cpu size={11} />
-          <span className="truncate max-w-[100px]">{api.agent_name}</span>
+        <div className="flex items-center gap-2">
+          {api.model && (
+            <span className={`text-xs px-1.5 py-0.5 rounded font-mono border ${
+              api.model === "gemini"   ? "bg-blue-900/20 text-blue-400 border-blue-900" :
+              api.model === "claude"   ? "bg-orange-900/20 text-orange-400 border-orange-900" :
+              api.model === "gpt-4"    ? "bg-emerald-900/20 text-emerald-400 border-emerald-900" :
+              api.model === "mixtral"  ? "bg-purple-900/20 text-purple-400 border-purple-900" :
+              api.model === "deepseek" ? "bg-red-900/20 text-red-400 border-red-900" :
+              api.model === "mistral"  ? "bg-pink-900/20 text-pink-400 border-pink-900" :
+              "bg-zinc-800/50 text-zinc-500 border-zinc-800"
+            }`}>
+              {api.model}
+            </span>
+          )}
+          <span className="flex items-center gap-1 text-xs text-zinc-400">
+            <Cpu size={11} />
+            <span className="truncate max-w-[80px]">{api.agent_name}</span>
+          </span>
         </div>
       </div>
     </Link>
