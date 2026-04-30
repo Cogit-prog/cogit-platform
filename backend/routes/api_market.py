@@ -38,12 +38,21 @@ _GROQ_MODELS = {
     "_default": "llama-3.3-70b-versatile",
 }
 
-def _provider_for(agent_model: str) -> str:
+def _provider_for(agent_model: str, agent_own_key: str | None = None) -> tuple[str, str]:
+    """Returns (provider, api_key_to_use)."""
     m = (agent_model or "other").lower()
-    if m == "gemini"  and GEMINI_API_KEY:    return "gemini"
-    if m == "claude"  and ANTHROPIC_API_KEY: return "anthropic"
-    if m == "gpt-4"   and OPENAI_API_KEY:    return "openai"
-    return "groq"
+    # Per-agent key always wins (user pays their own cost)
+    if agent_own_key:
+        if m == "claude":   return "anthropic", agent_own_key
+        if m == "gpt-4":    return "openai",    agent_own_key
+        if m == "gemini":   return "gemini",    agent_own_key
+        if m in ("grok",):  return "groq",      agent_own_key  # Grok not on Groq; use Groq as proxy
+    # Platform free keys
+    if m == "gemini"  and GEMINI_API_KEY:    return "gemini",    GEMINI_API_KEY
+    if m == "claude"  and ANTHROPIC_API_KEY: return "anthropic", ANTHROPIC_API_KEY
+    if m == "gpt-4"   and OPENAI_API_KEY:    return "openai",    OPENAI_API_KEY
+    # Groq free fallback (platform pays)
+    return "groq", GROQ_API_KEY
 
 # ── Rate limiter (per IP, in-memory) ──────────────────────────────────────────
 # Anonymous: 20 calls / 10 min per API.  Authenticated: 60 calls / 10 min per API.
@@ -155,13 +164,13 @@ def _parse_json_response(content: str) -> dict:
         return {"result": content}
 
 
-def _call_groq(system: str, user_msg: str, output_schema: list, agent_model: str = "llama") -> dict:
+def _call_groq(system: str, user_msg: str, output_schema: list, agent_model: str = "llama", key: str = "") -> dict:
     import requests as _req
     model = _GROQ_MODELS.get((agent_model or "other").lower(), _GROQ_MODELS["_default"])
     full_system = system + _schema_hint(output_schema)
     r = _req.post(
         "https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {key or GROQ_API_KEY}", "Content-Type": "application/json"},
         json={
             "model": model,
             "messages": [
@@ -179,11 +188,11 @@ def _call_groq(system: str, user_msg: str, output_schema: list, agent_model: str
     return _parse_json_response(r.json()["choices"][0]["message"]["content"])
 
 
-def _call_gemini(system: str, user_msg: str, output_schema: list) -> dict:
+def _call_gemini(system: str, user_msg: str, output_schema: list, key: str = "") -> dict:
     import requests as _req
     full_prompt = system + _schema_hint(output_schema) + "\n\n" + user_msg
     r = _req.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key or GEMINI_API_KEY}",
         headers={"Content-Type": "application/json"},
         json={
             "contents": [{"parts": [{"text": full_prompt}]}],
@@ -197,13 +206,13 @@ def _call_gemini(system: str, user_msg: str, output_schema: list) -> dict:
     return _parse_json_response(content)
 
 
-def _call_anthropic(system: str, user_msg: str, output_schema: list) -> dict:
+def _call_anthropic(system: str, user_msg: str, output_schema: list, key: str = "") -> dict:
     import requests as _req
     full_system = system + _schema_hint(output_schema)
     r = _req.post(
         "https://api.anthropic.com/v1/messages",
         headers={
-            "x-api-key": ANTHROPIC_API_KEY,
+            "x-api-key": key or ANTHROPIC_API_KEY,
             "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
         },
@@ -221,12 +230,12 @@ def _call_anthropic(system: str, user_msg: str, output_schema: list) -> dict:
     return _parse_json_response(content)
 
 
-def _call_openai(system: str, user_msg: str, output_schema: list) -> dict:
+def _call_openai(system: str, user_msg: str, output_schema: list, key: str = "") -> dict:
     import requests as _req
     full_system = system + _schema_hint(output_schema)
     r = _req.post(
         "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {key or OPENAI_API_KEY}", "Content-Type": "application/json"},
         json={
             "model": "gpt-4o-mini",
             "messages": [
@@ -243,16 +252,17 @@ def _call_openai(system: str, user_msg: str, output_schema: list) -> dict:
     return _parse_json_response(r.json()["choices"][0]["message"]["content"])
 
 
-def _call_model(system: str, user_msg: str, output_schema: list, agent_model: str) -> tuple[dict, str]:
-    """Route to the agent's actual model provider. Returns (result, provider_used)."""
-    provider = _provider_for(agent_model)
+def _call_model(system: str, user_msg: str, output_schema: list, agent_model: str,
+                agent_own_key: str | None = None) -> tuple[dict, str]:
+    """Route to the agent's actual model provider. Returns (result, provider_label)."""
+    provider, key = _provider_for(agent_model, agent_own_key)
     if provider == "gemini":
-        return _call_gemini(system, user_msg, output_schema), "gemini"
+        return _call_gemini(system, user_msg, output_schema, key), "gemini"
     if provider == "anthropic":
-        return _call_anthropic(system, user_msg, output_schema), "claude"
+        return _call_anthropic(system, user_msg, output_schema, key), "claude"
     if provider == "openai":
-        return _call_openai(system, user_msg, output_schema), "gpt-4"
-    return _call_groq(system, user_msg, output_schema, agent_model), f"groq/{_GROQ_MODELS.get(agent_model.lower(), _GROQ_MODELS['_default'])}"
+        return _call_openai(system, user_msg, output_schema, key), "gpt-4"
+    return _call_groq(system, user_msg, output_schema, agent_model, key), f"groq/{_GROQ_MODELS.get((agent_model or 'other').lower(), _GROQ_MODELS['_default'])}"
 
 
 def _resolve_caller(authorization: Optional[str], x_api_key: Optional[str]):
@@ -362,7 +372,7 @@ def call_api(
 
     conn = get_conn()
     row = conn.execute("""
-        SELECT aa.*, a.model as agent_model
+        SELECT aa.*, a.model as agent_model, a.model_api_key_enc as agent_key_enc
         FROM agent_apis aa JOIN agents a ON aa.agent_id = a.id
         WHERE aa.id=?
     """, (api_id,)).fetchone()
@@ -391,11 +401,20 @@ def call_api(
     if rag_ctx:
         system_prompt += f"\n\n--- Agent Knowledge Base ---\n{rag_ctx}\n--- End of Knowledge Base ---"
 
-    agent_model = api.get("agent_model") or "other"
+    agent_model   = api.get("agent_model") or "other"
+    # Decrypt per-agent key if stored (agent pays their own cost)
+    agent_own_key: str | None = None
+    if api.get("agent_key_enc"):
+        try:
+            from backend.security import decrypt
+            agent_own_key = decrypt(api["agent_key_enc"])
+        except Exception:
+            pass
+
     t0 = time.monotonic()
     provider_used = "groq"
     try:
-        result, provider_used = _call_model(system_prompt, user_msg, output_schema, agent_model)
+        result, provider_used = _call_model(system_prompt, user_msg, output_schema, agent_model, agent_own_key)
         status = "success"
     except HTTPException:
         conn.close()
@@ -523,7 +542,7 @@ def test_api(api_id: str, x_api_key: str = Header(...)):
 
     conn = get_conn()
     row = conn.execute("""
-        SELECT aa.*, a.model as agent_model
+        SELECT aa.*, a.model as agent_model, a.model_api_key_enc as agent_key_enc
         FROM agent_apis aa JOIN agents a ON aa.agent_id = a.id
         WHERE aa.id=?
     """, (api_id,)).fetchone()
@@ -541,9 +560,17 @@ def test_api(api_id: str, x_api_key: str = Header(...)):
     if rag_ctx:
         system_prompt += f"\n\n--- Agent Knowledge Base ---\n{rag_ctx}\n---"
 
-    agent_model = api.get("agent_model") or "other"
-    user_msg    = "\n".join(f"{k}: {v}" for k, v in example_input.items()) or "test"
-    result, provider_used = _call_model(system_prompt, user_msg, output_schema, agent_model)
+    agent_model   = api.get("agent_model") or "other"
+    agent_own_key: str | None = None
+    if api.get("agent_key_enc"):
+        try:
+            from backend.security import decrypt
+            agent_own_key = decrypt(api["agent_key_enc"])
+        except Exception:
+            pass
+
+    user_msg = "\n".join(f"{k}: {v}" for k, v in example_input.items()) or "test"
+    result, provider_used = _call_model(system_prompt, user_msg, output_schema, agent_model, agent_own_key)
 
     expected_keys = {f["name"] for f in output_schema}
     missing       = expected_keys - set(result.keys())

@@ -171,19 +171,24 @@ def verify_model_key(body: ModelVerifyBody):
 
 @router.patch("/me/verify-model")
 def update_model_verification(body: ModelVerifyUpdateBody, x_api_key: str = Header(...)):
-    """등록 후 모델 인증 — 에이전트가 자신의 API 키로 모델 검증."""
+    """등록 후 모델 인증 — 에이전트가 자신의 API 키로 모델 검증. 성공 시 암호화 저장."""
     agent = get_agent_by_key(x_api_key)
     if not agent:
         raise HTTPException(401, "유효하지 않은 API 키")
     if agent.get("model_verified"):
         return {"model_verified": True, "message": "이미 인증됨"}
 
-    ok = _verify_model_api_key(agent["model"], body.model_api_key.strip())
+    raw_key = body.model_api_key.strip()
+    ok = _verify_model_api_key(agent["model"], raw_key)
     if not ok:
         raise HTTPException(400, "API 키 인증 실패 — 키를 확인해주세요")
 
+    enc_key = encrypt(raw_key)
     conn = get_conn()
-    conn.execute("UPDATE agents SET model_verified=1 WHERE id=?", (agent["id"],))
+    conn.execute(
+        "UPDATE agents SET model_verified=1, model_api_key_enc=? WHERE id=?",
+        (enc_key, agent["id"])
+    )
     conn.commit()
     conn.close()
 
@@ -222,10 +227,14 @@ def register_agent(body: AgentRegister, authorization: str = Header(default=""))
             if existing:
                 raise HTTPException(400, f"이미 에이전트가 있습니다: '{existing['name']}'. 계정당 1개만 생성 가능합니다.")
 
-    # 모델 API 키 검증 (제공된 경우)
-    model_verified = 0
-    if body.model_api_key.strip():
-        model_verified = 1 if _verify_model_api_key(model, body.model_api_key.strip()) else 0
+    # 모델 API 키 검증 (제공된 경우) + 성공 시 암호화 저장
+    model_verified    = 0
+    model_key_raw     = body.model_api_key.strip()
+    enc_model_api_key = None
+    if model_key_raw:
+        if _verify_model_api_key(model, model_key_raw):
+            model_verified    = 1
+            enc_model_api_key = encrypt(model_key_raw)
 
     identity  = generate_identity()
     agent_id  = str(uuid.uuid4())[:8]
@@ -238,10 +247,12 @@ def register_agent(body: AgentRegister, authorization: str = Header(default=""))
     try:
         conn.execute(
             """INSERT INTO agents
-               (id, name, domain, model, bio, address, private_key, api_key, status, owner_user_id, model_verified)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+               (id, name, domain, model, bio, address, private_key, api_key, status,
+                owner_user_id, model_verified, model_api_key_enc)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (agent_id, body.name.strip(), body.domain, model, body.bio.strip(),
-             identity["address"], enc_pk, key_hash, "pending", owner_user_id, model_verified)
+             identity["address"], enc_pk, key_hash, "pending",
+             owner_user_id, model_verified, enc_model_api_key)
         )
         conn.commit()
     except Exception as e:

@@ -647,6 +647,7 @@ def init_db():
         # Agent battle stats
         "ALTER TABLE agents   ADD COLUMN battle_wins INTEGER DEFAULT 0",
         "ALTER TABLE agents   ADD COLUMN battle_total INTEGER DEFAULT 0",
+        "ALTER TABLE agents   ADD COLUMN model_api_key_enc TEXT DEFAULT NULL",
         # Battle enhancements
         "ALTER TABLE battles  ADD COLUMN summary TEXT DEFAULT ''",
         "ALTER TABLE battles  ADD COLUMN total_votes INTEGER DEFAULT 0",
