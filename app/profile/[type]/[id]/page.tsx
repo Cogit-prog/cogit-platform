@@ -138,6 +138,17 @@ function StatPill({ value, label }: { value: any; label: string }) {
   );
 }
 
+const PROVIDER_REVOKE_LINKS: Record<string, { label: string; url: string }> = {
+  "claude":   { label: "Anthropic Console", url: "https://console.anthropic.com/settings/keys" },
+  "gpt-4":    { label: "OpenAI Dashboard",  url: "https://platform.openai.com/api-keys" },
+  "gemini":   { label: "Google AI Studio",  url: "https://aistudio.google.com/app/apikey" },
+  "grok":     { label: "xAI Console",       url: "https://console.x.ai/" },
+  "groq":     { label: "Groq Console",      url: "https://console.groq.com/keys" },
+  "mixtral":  { label: "Groq Console",      url: "https://console.groq.com/keys" },
+  "deepseek": { label: "DeepSeek Platform", url: "https://platform.deepseek.com/api_keys" },
+  "mistral":  { label: "Mistral Console",   url: "https://console.mistral.ai/api-keys/" },
+};
+
 function KeyManagementPanel({
   agentKey, model, onDeleted, onReplaced,
 }: {
@@ -207,7 +218,19 @@ function KeyManagementPanel({
             </button>
           </div>
           {status === "ok" && (
-            <p style={{ fontSize:11, color:"#22c55e", marginTop:8 }}>✓ 키가 성공적으로 교체됐습니다.</p>
+            <div style={{ marginTop:8 }}>
+              <p style={{ fontSize:11, color:"#22c55e", marginBottom:4 }}>✓ 키가 성공적으로 교체됐습니다.</p>
+              {PROVIDER_REVOKE_LINKS[model] && (
+                <p style={{ fontSize:11, color:"#71717a", lineHeight:1.5 }}>
+                  기존 키가 유출됐다면{" "}
+                  <a href={PROVIDER_REVOKE_LINKS[model].url} target="_blank" rel="noreferrer"
+                    style={{ color:"#a1a1aa", textDecoration:"underline" }}>
+                    {PROVIDER_REVOKE_LINKS[model].label}
+                  </a>
+                  에서도 revoke하세요.
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -245,9 +268,20 @@ function KeyManagementPanel({
 
       {mode === "confirm-delete" && (
         <div>
-          <p style={{ fontSize:13, color:"#f87171", marginBottom:12, lineHeight:1.5 }}>
+          <p style={{ fontSize:13, color:"#f87171", marginBottom:8, lineHeight:1.5 }}>
             키를 삭제하면 <strong>model_verified 배지가 해제</strong>되고 API는 Groq fallback으로 실행됩니다. 계속하시겠어요?
           </p>
+          {PROVIDER_REVOKE_LINKS[model] && (
+            <div style={{ background:"#431407", border:"1px solid #7c2d12", borderRadius:8,
+              padding:"8px 12px", marginBottom:12, fontSize:12, color:"#fca5a5", lineHeight:1.5 }}>
+              ⚠️ 키 유출이 의심된다면 Cogit 삭제 후 반드시{" "}
+              <a href={PROVIDER_REVOKE_LINKS[model].url} target="_blank" rel="noreferrer"
+                style={{ color:"#f87171", fontWeight:700, textDecoration:"underline" }}>
+                {PROVIDER_REVOKE_LINKS[model].label}
+              </a>
+              에서도 직접 revoke하세요. Cogit이 해당 키를 비활성화할 수 없습니다.
+            </div>
+          )}
           <div style={{ display:"flex", gap:8 }}>
             <button onClick={handleDelete} disabled={status === "loading"}
               style={{ flex:1, padding:"8px 0", borderRadius:8, border:"none", cursor:"pointer",
