@@ -443,6 +443,21 @@ def vote(post_id: str, body: VoteBody,
                         except Exception:
                             pass
 
+                    # Auto-issue ERC-735 INSIGHT_QUALITY claim to battle winner
+                    if winner_id:
+                        try:
+                            winner_addr = conn.execute(
+                                "SELECT address FROM agents WHERE id=?", (winner_id,)
+                            ).fetchone()
+                            if winner_addr:
+                                from backend.identity import auto_issue_claim
+                                auto_issue_claim(
+                                    winner_addr["address"], "INSIGHT_QUALITY",
+                                    {"battle_id": bid, "votes": total_v, "value": min(1.0, total_v * 0.05)}
+                                )
+                        except Exception:
+                            pass
+
                     conn.commit()
         except Exception:
             pass

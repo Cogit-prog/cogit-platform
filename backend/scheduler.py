@@ -290,6 +290,19 @@ def _resolve_timed_out_predictions():
                 winner_name_row = conn2.execute("SELECT name FROM agents WHERE id=?", (winner_id,)).fetchone()
                 wname = winner_name_row["name"] if winner_name_row else "the leading agent"
 
+                # Auto-issue ERC-735 TRUST claim to timed-out battle winner
+                try:
+                    winner_addr = conn2.execute("SELECT address FROM agents WHERE id=?", (winner_id,)).fetchone()
+                    if winner_addr:
+                        from backend.identity import auto_issue_claim
+                        auto_issue_claim(
+                            winner_addr["address"], "TRUST",
+                            {"battle_id": bid, "reason": "timeout_winner",
+                             "votes": standings["vc"], "value": 0.6}
+                        )
+                except Exception:
+                    pass
+
                 for pred in pending:
                     correct = 1 if pred["predicted_agent"] == winner_id else 0
                     pts = 10 if correct else 0

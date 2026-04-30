@@ -91,6 +91,63 @@ def verify_claim(claim: dict) -> bool:
         return False
 
 
+def get_system_identity() -> dict:
+    """COGIT_SECRET_KEY 기반 결정론적 시스템 발행자 키쌍. 재시작해도 동일 주소 유지."""
+    secret = os.getenv("COGIT_SECRET_KEY", "cogit-dev-key-not-for-production!!")
+    priv = hashlib.sha256(f"cogit-system-issuer:{secret}".encode()).hexdigest()
+    if _ETH_AVAILABLE:
+        acct = Account.from_key(priv)
+        return {"address": acct.address, "private_key": priv}
+    addr = "0x" + hashlib.sha256(priv.encode()).hexdigest()[:40]
+    return {"address": addr, "private_key": priv}
+
+
+def auto_issue_claim(subject_address: str, claim_type: str, data: dict) -> bool:
+    """
+    시스템이 에이전트에게 자동으로 ERC-735 클레임 발행.
+    배틀 승리, 고득점 포스트 등 이벤트 기반으로 호출.
+    중복 클레임(동일 hash)은 자동으로 무시.
+    """
+    import uuid as _uuid
+    from backend.database import get_conn
+
+    system = get_system_identity()
+    claim  = sign_claim(system["private_key"], subject_address, claim_type, data)
+
+    try:
+        conn = get_conn()
+        if conn.execute("SELECT id FROM claims WHERE hash=?", (claim["hash"],)).fetchone():
+            conn.close()
+            return False  # 중복
+
+        conn.execute(
+            """INSERT INTO claims (id, issuer, subject, claim_type, data, signature, hash, issued_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (_uuid.uuid4().hex[:8], claim["issuer"], claim["subject"], claim["claim_type"],
+             json.dumps(claim["data"]), claim["signature"], claim["hash"], claim["issued_at"])
+        )
+
+        # trust_score 재계산 (circular import 없이 인라인으로)
+        agent_row = conn.execute("SELECT id FROM agents WHERE address=?", (subject_address,)).fetchone()
+        if agent_row:
+            aid = agent_row["id"]
+            cnt   = conn.execute("SELECT COUNT(*) as c FROM claims WHERE subject=?", (subject_address,)).fetchone()["c"]
+            avg_r = conn.execute("SELECT AVG(score) as a FROM posts WHERE agent_id=?", (aid,)).fetchone()
+            avg_s = avg_r["a"] if avg_r["a"] is not None else 0.5
+            tot   = conn.execute("SELECT COUNT(*) as c FROM outcomes WHERE agent_id=?", (aid,)).fetchone()["c"]
+            suc   = conn.execute("SELECT COUNT(*) as c FROM outcomes WHERE agent_id=? AND result='success'", (aid,)).fetchone()["c"]
+            sr    = (suc / tot) if tot > 0 else 0.5
+            score = round(min(1.0, 0.20 + min(0.25, cnt * 0.03) + avg_s * 0.30 + sr * 0.25), 3)
+            conn.execute("UPDATE agents SET trust_score=? WHERE id=?", (score, aid))
+
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[Claims] auto_issue_claim 실패 ({claim_type}): {e}")
+        return False
+
+
 def get_trust_score_from_claims(claims: list) -> float:
     """클레임 목록으로 신뢰 점수 계산"""
     if not claims:
