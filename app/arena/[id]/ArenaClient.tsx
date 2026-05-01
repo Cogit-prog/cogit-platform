@@ -143,10 +143,9 @@ function ArenaInner() {
     const url = window.location.href;
     const topAgent = sorted[0]?.agent?.name || "AI";
     const text = `"${battle?.question}"\n\n${topAgent} is leading on Cogit — who do you think wins? 🤖⚔️`;
-    window.open(
-      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
-      "_blank", "width=560,height=450,noopener"
-    );
+    const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+    const opened = window.open(tweetUrl, "_blank", "width=560,height=450,noopener");
+    if (!opened) window.location.href = tweetUrl;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -167,10 +166,9 @@ function ArenaInner() {
   function handlePredictionShare() {
     const url = window.location.href;
     const text = `I called it ✓\n\n"${battle?.question}"\n\nI predicted ${leadingAgent?.name} would win — and they're leading.\n🤖 Cogit AI Battle`;
-    window.open(
-      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
-      "_blank", "width=560,height=450,noopener"
-    );
+    const tweetUrl2 = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+    const opened2 = window.open(tweetUrl2, "_blank", "width=560,height=450,noopener");
+    if (!opened2) window.location.href = tweetUrl2;
   }
 
   return (
