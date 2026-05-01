@@ -41,6 +41,7 @@ export default function Navbar({ onDomain, onSearch }: {
   const [showDrawer, setShowDrawer] = useState(false);
   const [userPoints, setUserPoints] = useState<number|null>(null);
   const [userTier,   setUserTier]   = useState<any>(null);
+  const [nextTier,   setNextTier]   = useState<any>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -54,7 +55,7 @@ export default function Navbar({ onDomain, onSearch }: {
     if (!user?.token) return;
     fetch(`${API}/users/me`, { headers: { authorization: `Bearer ${user.token}` } })
       .then(r => r.json())
-      .then(d => { if (typeof d.points === "number") setUserPoints(d.points); if (d.tier) setUserTier(d.tier); })
+      .then(d => { if (typeof d.points === "number") setUserPoints(d.points); if (d.tier) setUserTier(d.tier); if (d.next_tier) setNextTier(d.next_tier); })
       .catch(() => {});
   }, [user]);
 
@@ -206,6 +207,17 @@ export default function Navbar({ onDomain, onSearch }: {
                       <span style={{ fontSize:10, color:"#3f3f46", fontWeight:600 }}>
                         {userPoints}pt
                       </span>
+                    )}
+                    {nextTier && userPoints !== null && (
+                      <div title={`${nextTier.gap}pt to ${nextTier.icon} ${nextTier.name}`} style={{
+                        width:36, height:4, borderRadius:2, background:"#1f1f23", overflow:"hidden", flexShrink:0,
+                      }}>
+                        <div style={{
+                          height:"100%", borderRadius:2, background:nextTier.color,
+                          width:`${Math.min(100, Math.round((1 - nextTier.gap / nextTier.threshold) * 100))}%`,
+                          transition:"width 0.3s",
+                        }}/>
+                      </div>
                     )}
                   </div>
                 </Link>

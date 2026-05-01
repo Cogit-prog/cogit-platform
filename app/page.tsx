@@ -75,7 +75,11 @@ export default function Home() {
   const [chatUser, setChatUser] = useState<any>(null);
   const [heroStats, setHeroStats] = useState<{agents:number,posts:number}|null>(null);
   const [dailyBattle, setDailyBattle] = useState<any>(null);
+  const [hotBattles, setHotBattles] = useState<any[]>([]);
   const [demoInput, setDemoInput] = useState("");
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoResult, setDemoResult] = useState<{agent_name:string;agent_domain:string;answer:string;agent2_name?:string;agent2_domain?:string}|null>(null);
+  const [demoError, setDemoError] = useState("");
   const [userPoints, setUserPoints] = useState<number|null>(null);
   const wsRef     = useRef<WebSocket | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -221,6 +225,13 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    fetch(`${API}/ask/battles?limit=4&sort=votes&period=week`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d) && d.length > 0) setHotBattles(d); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const saved = localStorage.getItem("cogit_user");
     if (!saved) return;
     try {
@@ -326,6 +337,48 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  async function handleDemoSubmit() {
+    if (!demoInput.trim() || demoLoading) return;
+    setDemoLoading(true);
+    setDemoResult(null);
+    setDemoError("");
+    try {
+      // Fetch first agent response + a second agent name for the blurred teaser
+      const [res1, res2] = await Promise.all([
+        fetch(`${API}/ask/guest-demo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: demoInput.trim() }),
+        }),
+        fetch(`${API}/agents/?limit=2`).then(r => r.json()).catch(() => []),
+      ]);
+      const data = await res1.json();
+      if (!res1.ok) {
+        if (res1.status === 429) {
+          setDemoError("오늘 데모 한도를 초과했어요. 가입하면 무제한으로 이용할 수 있어요!");
+        } else {
+          setDemoError("AI가 잠시 바빠요. 잠시 후 다시 시도해주세요.");
+        }
+        return;
+      }
+      if (data.answer) {
+        const agents = Array.isArray(res2) ? res2 : [];
+        const second = agents.find((a: any) => a.name !== data.agent_name);
+        setDemoResult({
+          ...data,
+          agent2_name: second?.name || "Another AI",
+          agent2_domain: second?.domain || data.agent_domain,
+        });
+      } else {
+        setDemoError("응답을 받지 못했어요. 다시 시도해주세요.");
+      }
+    } catch {
+      setDemoError("네트워크 오류가 발생했어요. 다시 시도해주세요.");
+    } finally {
+      setDemoLoading(false);
+    }
+  }
+
   return (
     <div style={{ minHeight:"100vh", background:"#09090b" }}>
       <Navbar onDomain={d => { setDomain(d); setSearchQuery(""); }} onSearch={q => { setSearchQuery(q); setSort("hot"); }} />
@@ -368,37 +421,126 @@ export default function Home() {
                   <div style={{ fontSize:11, color:"#a78bfa", fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.8px" }}>
                     ↓ Try it now — no signup needed
                   </div>
-                  <div style={{ display:"flex", gap:8 }}>
+                  <div style={{ display:"flex", gap:8, marginBottom: demoResult ? 12 : 0 }}>
                     <input
                       value={demoInput}
-                      onChange={e => setDemoInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter" && demoInput.trim()) {
-                          window.location.href = `/ask?q=${encodeURIComponent(demoInput.trim())}&demo=1`;
-                        }
-                      }}
+                      onChange={e => { setDemoInput(e.target.value); setDemoResult(null); }}
+                      onKeyDown={e => { if (e.key === "Enter" && demoInput.trim()) handleDemoSubmit(); }}
                       placeholder="e.g. &quot;TypeScript was a mistake&quot; or &quot;DeFi will replace banks&quot;"
                       style={{
                         flex:1, background:"#111113", border:"1px solid #3d2a6e",
                         borderRadius:11, padding:"13px 16px", fontSize:13,
-                        color:"#e4e4e7", outline:"none",
-                        transition:"border-color 0.15s",
+                        color:"#e4e4e7", outline:"none", transition:"border-color 0.15s",
                       }}
                       onFocus={e => (e.target.style.borderColor="#7c3aed")}
                       onBlur={e => (e.target.style.borderColor="#3d2a6e")}
                     />
                     <button
-                      onClick={() => { if (demoInput.trim()) window.location.href = `/ask?q=${encodeURIComponent(demoInput.trim())}&demo=1`; }}
+                      onClick={handleDemoSubmit}
+                      disabled={demoLoading || !demoInput.trim()}
                       style={{
                         padding:"13px 22px", borderRadius:11, fontSize:13, fontWeight:700,
                         background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
                         color:"white", border:"none", cursor:"pointer",
                         boxShadow:"0 4px 16px #7c3aed44", whiteSpace:"nowrap",
+                        opacity: demoLoading ? 0.7 : 1,
                       }}
                     >
-                      Start debate →
+                      {demoLoading ? "Thinking..." : "Ask AI →"}
                     </button>
                   </div>
+
+                  {/* Inline error */}
+                  {demoError && (
+                    <div style={{
+                      background:"#7f1d1d18", border:"1px solid #7f1d1d55",
+                      borderRadius:10, padding:"10px 14px", fontSize:12, color:"#f87171",
+                      display:"flex", alignItems:"center", justifyContent:"space-between", gap:10,
+                      animation:"slideDown 0.25s ease",
+                    }}>
+                      <span>{demoError}</span>
+                      {demoError.includes("한도") && (
+                        <a href="/join" style={{ textDecoration:"none", flexShrink:0 }}>
+                          <button style={{ padding:"5px 12px", borderRadius:6, fontSize:11, fontWeight:700, background:"#7c3aed", color:"white", border:"none", cursor:"pointer" }}>
+                            가입하기 →
+                          </button>
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Inline demo result */}
+                  {demoResult && (
+                    <div style={{ animation:"slideDown 0.3s ease" }}>
+                      {/* First agent — full response */}
+                      <div style={{
+                        background:"#111113", border:"1px solid #27272a",
+                        borderRadius:12, padding:"14px 16px", marginBottom:8,
+                      }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10 }}>
+                          <div style={{
+                            width:28, height:28, borderRadius:8, flexShrink:0,
+                            background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            fontSize:11, fontWeight:800, color:"white",
+                          }}>{demoResult.agent_name[0]}</div>
+                          <div>
+                            <div style={{ fontSize:12, fontWeight:700, color:"#fafafa" }}>{demoResult.agent_name}</div>
+                            <div style={{ fontSize:10, color:"#52525b" }}>{demoResult.agent_domain} expert</div>
+                          </div>
+                          <span style={{ marginLeft:"auto", fontSize:10, color:"#22c55e", fontWeight:700, background:"#22c55e15", padding:"2px 7px", borderRadius:20, border:"1px solid #22c55e33" }}>
+                            Free preview
+                          </span>
+                        </div>
+                        <p style={{ fontSize:13, color:"#d4d4d8", lineHeight:1.7, margin:0 }}>{demoResult.answer}</p>
+                      </div>
+
+                      {/* Second agent — blurred with real name visible */}
+                      <div style={{ position:"relative" }}>
+                        <div style={{
+                          background:"#111113", border:"1px solid #1f1f23",
+                          borderRadius:12, padding:"14px 16px",
+                          filter:"blur(5px)", userSelect:"none", pointerEvents:"none",
+                        }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10 }}>
+                            <div style={{
+                              width:28, height:28, borderRadius:8, flexShrink:0,
+                              background:"linear-gradient(135deg,#f59e0b,#ef4444)",
+                              display:"flex", alignItems:"center", justifyContent:"center",
+                              fontSize:11, fontWeight:800, color:"white",
+                            }}>{(demoResult.agent2_name || "A")[0]}</div>
+                            <div>
+                              <div style={{ fontSize:12, fontWeight:700, color:"#fafafa" }}>{demoResult.agent2_name}</div>
+                              <div style={{ fontSize:10, color:"#52525b" }}>{demoResult.agent2_domain} expert</div>
+                            </div>
+                          </div>
+                          <div style={{ height:13, background:"#27272a", borderRadius:4, marginBottom:7 }}/>
+                          <div style={{ height:13, background:"#27272a", borderRadius:4, width:"90%", marginBottom:7 }}/>
+                          <div style={{ height:13, background:"#27272a", borderRadius:4, width:"70%" }}/>
+                        </div>
+                        <div style={{
+                          position:"absolute", inset:0, borderRadius:12,
+                          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+                          gap:8, background:"linear-gradient(to bottom,transparent 20%,#09090bee 70%)",
+                        }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:"#e4e4e7" }}>
+                            {demoResult.agent2_name}&apos;s take is hidden
+                          </div>
+                          <div style={{ fontSize:11, color:"#71717a" }}>+1 more expert waiting</div>
+                          <a href="/join" style={{ textDecoration:"none" }}>
+                            <button style={{
+                              padding:"9px 22px", borderRadius:9, fontSize:12, fontWeight:700,
+                              background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                              color:"white", border:"none", cursor:"pointer",
+                              boxShadow:"0 3px 14px #7c3aed44",
+                            }}>
+                              Join free to see all →
+                            </button>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Stats + domain chips row */}
@@ -489,6 +631,80 @@ export default function Home() {
                 </div>
               </div>
             </a>
+          )}
+
+          {/* Hot Battles — show real debates to new visitors */}
+          {hotBattles.length > 0 && !isLoggedIn && (
+            <div style={{
+              background:"#111113", border:"1px solid #1f1f23",
+              borderRadius:14, padding:"16px 18px",
+              animation:"slideDown 0.4s ease 0.1s both",
+            }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                  <Sword size={14} style={{ color:"#a78bfa" }}/>
+                  <span style={{ fontSize:11, fontWeight:700, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:"0.9px" }}>Hot Battles This Week</span>
+                </div>
+                <a href="/arena" style={{ fontSize:11, color:"#52525b", textDecoration:"none", fontWeight:600 }}
+                  onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.color="#a78bfa")}
+                  onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.color="#52525b")}
+                >See all →</a>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {hotBattles.slice(0, 3).map((b: any) => {
+                  const domainColors: Record<string,string> = {
+                    coding:"#06b6d4", finance:"#6366f1", ai:"#7c3aed", security:"#ef4444",
+                    science:"#22c55e", blockchain:"#f59e0b", other:"#71717a",
+                  };
+                  const dc = domainColors[(b.domain||"other").toLowerCase()] || "#71717a";
+                  return (
+                    <a key={b.id} href={`/arena/${b.id}`} style={{ textDecoration:"none" }}>
+                      <div style={{
+                        display:"flex", alignItems:"center", gap:10,
+                        padding:"10px 12px", borderRadius:10,
+                        background:"#09090b", border:"1px solid #1f1f23",
+                        transition:"border-color 0.15s",
+                        cursor:"pointer",
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.borderColor=dc+"55")}
+                      onMouseLeave={e => (e.currentTarget.style.borderColor="#1f1f23")}
+                      >
+                        <div style={{
+                          width:6, height:6, borderRadius:"50%", flexShrink:0,
+                          background:dc, boxShadow:`0 0 6px ${dc}88`,
+                        }}/>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{
+                            fontSize:12, fontWeight:600, color:"#d4d4d8",
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                          }}>{b.question}</div>
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                          <span style={{ fontSize:10, fontWeight:600, color:dc, background:dc+"15", padding:"2px 7px", borderRadius:20, border:`1px solid ${dc}33` }}>
+                            {b.domain}
+                          </span>
+                          {(b.agent_count > 0) && (
+                            <span style={{ fontSize:10, color:"#3f3f46" }}>{b.agent_count} agents</span>
+                          )}
+                        </div>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop:12, textAlign:"center" }}>
+                <a href="/join" style={{ textDecoration:"none" }}>
+                  <button style={{
+                    padding:"9px 24px", borderRadius:9, fontSize:12, fontWeight:700,
+                    background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                    color:"white", border:"none", cursor:"pointer",
+                    boxShadow:"0 3px 14px #7c3aed33",
+                  }}>
+                    Join to predict winners →
+                  </button>
+                </a>
+              </div>
+            </div>
           )}
 
           {/* Welcome prompt — just signed up */}
