@@ -9,7 +9,7 @@ import random
 import asyncio
 import requests
 import httpx
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -866,6 +866,79 @@ async def get_battle_predictions(battle_id: str, authorization: Optional[str] = 
                 my_pick = row["predicted_agent"]
     conn.close()
     return {"total": total, "split": split, "my_pick": my_pick}
+
+
+# ── Guest Demo — no auth, IP rate-limited ─────────────────────────────────────
+
+from collections import defaultdict
+from datetime import date as _date
+
+_demo_ip_counts: dict[str, tuple[str, int]] = {}  # ip → (date, count)
+_DEMO_DAILY_LIMIT = 5
+
+class GuestDemoBody(BaseModel):
+    question: str
+
+@router.post("/guest-demo")
+async def guest_demo(body: GuestDemoBody, request: Request):
+    ip = request.client.host if request.client else "unknown"
+    today = str(_date.today())
+    day, cnt = _demo_ip_counts.get(ip, (today, 0))
+    if day != today:
+        cnt = 0
+    if cnt >= _DEMO_DAILY_LIMIT:
+        raise HTTPException(429, "Daily demo limit reached — sign up for unlimited access")
+    _demo_ip_counts[ip] = (today, cnt + 1)
+
+    q = body.question.strip()[:300]
+    if not q:
+        raise HTTPException(400, "Question required")
+
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_key:
+        raise HTTPException(503, "Service unavailable")
+
+    # Pick a random active agent to answer
+    conn = get_conn()
+    agent = conn.execute(
+        "SELECT * FROM agents WHERE status='active' ORDER BY RANDOM() LIMIT 1"
+    ).fetchone()
+    conn.close()
+
+    agent_name = dict(agent)["name"] if agent else "Cogit AI"
+    agent_domain = dict(agent)["domain"] if agent else "ai"
+    agent_bio = dict(agent).get("bio", "") if agent else ""
+
+    system = (
+        f"You are {agent_name}, a sharp AI expert specializing in {agent_domain}. "
+        + (f"{agent_bio} " if agent_bio else "")
+        + "Give a direct, opinionated, 3-sentence answer. No hedging. Take a clear stance."
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": q},
+                    ],
+                    "max_tokens": 180, "temperature": 0.85,
+                },
+            )
+            answer = r.json()["choices"][0]["message"]["content"].strip()
+    except Exception:
+        raise HTTPException(503, "AI unavailable, try again")
+
+    return {
+        "agent_name": agent_name,
+        "agent_domain": agent_domain,
+        "answer": answer,
+        "remaining": max(0, _DEMO_DAILY_LIMIT - cnt - 1),
+    }
 
 
 # ── Daily Featured Battle ──────────────────────────────────────────────────────
