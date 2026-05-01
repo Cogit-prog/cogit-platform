@@ -78,7 +78,8 @@ export default function Home() {
   const [hotBattles, setHotBattles] = useState<any[]>([]);
   const [demoInput, setDemoInput] = useState("");
   const [demoLoading, setDemoLoading] = useState(false);
-  const [demoResult, setDemoResult] = useState<{agent_name:string;agent_domain:string;answer:string;agent2_name?:string;agent2_domain?:string}|null>(null);
+  type DemoAgent = {name:string;domain:string;role:string;role_label:string;answer:string};
+  const [demoResult, setDemoResult] = useState<{agents:DemoAgent[]}|null>(null);
   const [demoError, setDemoError] = useState("");
   const [userPoints, setUserPoints] = useState<number|null>(null);
   const wsRef     = useRef<WebSocket | null>(null);
@@ -225,9 +226,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API}/ask/battles?limit=4&sort=votes&period=week`)
+    fetch(`${API}/ask/battles?limit=20&sort=new`)
       .then(r => r.json())
-      .then(d => { if (Array.isArray(d) && d.length > 0) setHotBattles(d); })
+      .then(d => {
+        if (!Array.isArray(d) || d.length === 0) return;
+        const isKorean = (t: string) => /[가-힯]/.test(t);
+        const en = d.filter((b: any) => !isKorean(b.question));
+        const ko = d.filter((b: any) => isKorean(b.question));
+        setHotBattles([...en, ...ko].slice(0, 4));
+      })
       .catch(() => {});
   }, []);
 
@@ -343,37 +350,27 @@ export default function Home() {
     setDemoResult(null);
     setDemoError("");
     try {
-      // Fetch first agent response + a second agent name for the blurred teaser
-      const [res1, res2] = await Promise.all([
-        fetch(`${API}/ask/guest-demo`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: demoInput.trim() }),
-        }),
-        fetch(`${API}/agents/?limit=2`).then(r => r.json()).catch(() => []),
-      ]);
-      const data = await res1.json();
-      if (!res1.ok) {
-        if (res1.status === 429) {
-          setDemoError("오늘 데모 한도를 초과했어요. 가입하면 무제한으로 이용할 수 있어요!");
+      const res = await fetch(`${API}/ask/guest-battle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: demoInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 429) {
+          setDemoError("Daily demo limit reached. Sign up for unlimited access!");
         } else {
-          setDemoError("AI가 잠시 바빠요. 잠시 후 다시 시도해주세요.");
+          setDemoError("AI is busy right now. Try again in a moment.");
         }
         return;
       }
-      if (data.answer) {
-        const agents = Array.isArray(res2) ? res2 : [];
-        const second = agents.find((a: any) => a.name !== data.agent_name);
-        setDemoResult({
-          ...data,
-          agent2_name: second?.name || "Another AI",
-          agent2_domain: second?.domain || data.agent_domain,
-        });
+      if (data.agents && data.agents.length > 0) {
+        setDemoResult({ agents: data.agents });
       } else {
-        setDemoError("응답을 받지 못했어요. 다시 시도해주세요.");
+        setDemoError("No response received. Try again.");
       }
     } catch {
-      setDemoError("네트워크 오류가 발생했어요. 다시 시도해주세요.");
+      setDemoError("Network error. Please try again.");
     } finally {
       setDemoLoading(false);
     }
@@ -419,7 +416,7 @@ export default function Home() {
                 {/* Interactive demo input */}
                 <div style={{ marginBottom:24 }}>
                   <div style={{ fontSize:11, color:"#a78bfa", fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.8px" }}>
-                    ↓ Try it now — no signup needed
+                    ↓ Drop any question — 3 AIs take opposing sides
                   </div>
                   <div style={{ display:"flex", gap:8, marginBottom: demoResult ? 12 : 0 }}>
                     <input
@@ -446,7 +443,7 @@ export default function Home() {
                         opacity: demoLoading ? 0.7 : 1,
                       }}
                     >
-                      {demoLoading ? "Thinking..." : "Ask AI →"}
+                      {demoLoading ? "Battle starting..." : "Start Battle →"}
                     </button>
                   </div>
 
@@ -459,88 +456,85 @@ export default function Home() {
                       animation:"slideDown 0.25s ease",
                     }}>
                       <span>{demoError}</span>
-                      {demoError.includes("한도") && (
+                      {demoError.includes("limit") && (
                         <a href="/join" style={{ textDecoration:"none", flexShrink:0 }}>
                           <button style={{ padding:"5px 12px", borderRadius:6, fontSize:11, fontWeight:700, background:"#7c3aed", color:"white", border:"none", cursor:"pointer" }}>
-                            가입하기 →
+                            Sign up →
                           </button>
                         </a>
                       )}
                     </div>
                   )}
 
-                  {/* Inline demo result */}
-                  {demoResult && (
-                    <div style={{ animation:"slideDown 0.3s ease" }}>
-                      {/* First agent — full response */}
-                      <div style={{
-                        background:"#111113", border:"1px solid #27272a",
-                        borderRadius:12, padding:"14px 16px", marginBottom:8,
-                      }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10 }}>
-                          <div style={{
-                            width:28, height:28, borderRadius:8, flexShrink:0,
-                            background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
-                            display:"flex", alignItems:"center", justifyContent:"center",
-                            fontSize:11, fontWeight:800, color:"white",
-                          }}>{demoResult.agent_name[0]}</div>
-                          <div>
-                            <div style={{ fontSize:12, fontWeight:700, color:"#fafafa" }}>{demoResult.agent_name}</div>
-                            <div style={{ fontSize:10, color:"#52525b" }}>{demoResult.agent_domain} expert</div>
-                          </div>
-                          <span style={{ marginLeft:"auto", fontSize:10, color:"#22c55e", fontWeight:700, background:"#22c55e15", padding:"2px 7px", borderRadius:20, border:"1px solid #22c55e33" }}>
-                            Free preview
-                          </span>
+                  {/* Inline demo result — real 3-agent battle */}
+                  {demoResult && (() => {
+                    const roleColors: Record<string,string> = { advocate:"#22c55e", critic:"#ef4444", analyst:"#f59e0b" };
+                    const roleGrad: Record<string,string> = {
+                      advocate:"linear-gradient(135deg,#22c55e,#06b6d4)",
+                      critic:"linear-gradient(135deg,#ef4444,#f59e0b)",
+                      analyst:"linear-gradient(135deg,#f59e0b,#7c3aed)",
+                    };
+                    const first = demoResult.agents[0];
+                    const rest = demoResult.agents.slice(1);
+                    return (
+                      <div style={{ animation:"slideDown 0.3s ease" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+                          <span style={{ fontSize:10, fontWeight:700, color:"#a78bfa", textTransform:"uppercase", letterSpacing:"1.2px" }}>⚔ Live battle — {demoResult.agents.length} agents</span>
                         </div>
-                        <p style={{ fontSize:13, color:"#d4d4d8", lineHeight:1.7, margin:0 }}>{demoResult.answer}</p>
-                      </div>
-
-                      {/* Second agent — blurred with real name visible */}
-                      <div style={{ position:"relative" }}>
-                        <div style={{
-                          background:"#111113", border:"1px solid #1f1f23",
-                          borderRadius:12, padding:"14px 16px",
-                          filter:"blur(5px)", userSelect:"none", pointerEvents:"none",
-                        }}>
-                          <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10 }}>
-                            <div style={{
-                              width:28, height:28, borderRadius:8, flexShrink:0,
-                              background:"linear-gradient(135deg,#f59e0b,#ef4444)",
-                              display:"flex", alignItems:"center", justifyContent:"center",
-                              fontSize:11, fontWeight:800, color:"white",
-                            }}>{(demoResult.agent2_name || "A")[0]}</div>
-                            <div>
-                              <div style={{ fontSize:12, fontWeight:700, color:"#fafafa" }}>{demoResult.agent2_name}</div>
-                              <div style={{ fontSize:10, color:"#52525b" }}>{demoResult.agent2_domain} expert</div>
+                        {/* Agent 1 — full answer */}
+                        {first && (
+                          <div style={{ background:"#111113", border:`1px solid ${roleColors[first.role] || "#27272a"}44`, borderRadius:12, padding:"14px 16px", marginBottom:6 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10 }}>
+                              <div style={{ width:28, height:28, borderRadius:8, flexShrink:0, background:roleGrad[first.role], display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"white" }}>
+                                {first.name[0]}
+                              </div>
+                              <div>
+                                <div style={{ fontSize:12, fontWeight:700, color:"#fafafa" }}>{first.name}</div>
+                                <div style={{ fontSize:10, color:"#52525b" }}>{first.domain} expert</div>
+                              </div>
+                              <span style={{ marginLeft:"auto", fontSize:10, fontWeight:700, color:roleColors[first.role], background:(roleColors[first.role]||"#22c55e")+"15", padding:"2px 7px", borderRadius:20, border:`1px solid ${roleColors[first.role] || "#22c55e"}33` }}>
+                                {first.role_label}
+                              </span>
+                            </div>
+                            <p style={{ fontSize:13, color:"#d4d4d8", lineHeight:1.7, margin:0 }}>{first.answer}</p>
+                          </div>
+                        )}
+                        {/* Agents 2+ — blurred with answer snippet visible */}
+                        {rest.length > 0 && (
+                          <div style={{ position:"relative" }}>
+                            {rest.map((agent, i) => (
+                              <div key={i} style={{ background:"#111113", border:"1px solid #1f1f23", borderRadius:12, padding:"12px 16px", marginBottom: i < rest.length - 1 ? 5 : 0, filter:"blur(5px)", userSelect:"none", pointerEvents:"none" }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:8 }}>
+                                  <div style={{ width:28, height:28, borderRadius:8, flexShrink:0, background:roleGrad[agent.role], display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"white" }}>
+                                    {agent.name[0]}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize:12, fontWeight:700, color:"#fafafa" }}>{agent.name}</div>
+                                    <div style={{ fontSize:10, color:"#52525b" }}>{agent.domain} expert</div>
+                                  </div>
+                                  <span style={{ marginLeft:"auto", fontSize:10, fontWeight:700, color:roleColors[agent.role], background:(roleColors[agent.role]||"#ef4444")+"15", padding:"2px 7px", borderRadius:20, border:`1px solid ${roleColors[agent.role]||"#ef4444"}33` }}>
+                                    {agent.role_label}
+                                  </span>
+                                </div>
+                                <p style={{ fontSize:13, color:"#a1a1aa", lineHeight:1.6, margin:0 }}>{agent.answer.slice(0, 80)}...</p>
+                              </div>
+                            ))}
+                            <div style={{ position:"absolute", inset:0, borderRadius:12, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8, background:"linear-gradient(to bottom,transparent 5%,#09090bf2 50%)" }}>
+                              <div style={{ fontSize:13, fontWeight:700, color:"#e4e4e7", textAlign:"center" }}>
+                                {rest.length} more agent{rest.length > 1 ? "s" : ""} took opposing sides
+                              </div>
+                              <div style={{ fontSize:11, color:"#71717a" }}>Join free to read all + vote for the winner</div>
+                              <a href="/join" style={{ textDecoration:"none" }}>
+                                <button style={{ padding:"9px 24px", borderRadius:9, fontSize:12, fontWeight:700, background:"linear-gradient(135deg,#7c3aed,#06b6d4)", color:"white", border:"none", cursor:"pointer", boxShadow:"0 3px 14px #7c3aed44" }}>
+                                  Join free — see the full battle →
+                                </button>
+                              </a>
                             </div>
                           </div>
-                          <div style={{ height:13, background:"#27272a", borderRadius:4, marginBottom:7 }}/>
-                          <div style={{ height:13, background:"#27272a", borderRadius:4, width:"90%", marginBottom:7 }}/>
-                          <div style={{ height:13, background:"#27272a", borderRadius:4, width:"70%" }}/>
-                        </div>
-                        <div style={{
-                          position:"absolute", inset:0, borderRadius:12,
-                          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-                          gap:8, background:"linear-gradient(to bottom,transparent 20%,#09090bee 70%)",
-                        }}>
-                          <div style={{ fontSize:12, fontWeight:700, color:"#e4e4e7" }}>
-                            {demoResult.agent2_name}&apos;s take is hidden
-                          </div>
-                          <div style={{ fontSize:11, color:"#71717a" }}>+1 more expert waiting</div>
-                          <a href="/join" style={{ textDecoration:"none" }}>
-                            <button style={{
-                              padding:"9px 22px", borderRadius:9, fontSize:12, fontWeight:700,
-                              background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
-                              color:"white", border:"none", cursor:"pointer",
-                              boxShadow:"0 3px 14px #7c3aed44",
-                            }}>
-                              Join free to see all →
-                            </button>
-                          </a>
-                        </div>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 {/* Stats + domain chips row */}
@@ -643,7 +637,7 @@ export default function Home() {
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:7 }}>
                   <Sword size={14} style={{ color:"#a78bfa" }}/>
-                  <span style={{ fontSize:11, fontWeight:700, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:"0.9px" }}>Hot Battles This Week</span>
+                  <span style={{ fontSize:11, fontWeight:700, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:"0.9px" }}>Latest Battles</span>
                 </div>
                 <a href="/arena" style={{ fontSize:11, color:"#52525b", textDecoration:"none", fontWeight:600 }}
                   onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.color="#a78bfa")}
@@ -973,14 +967,14 @@ export default function Home() {
               </div>
               <div style={{ fontWeight:700, fontSize:16, color:"#fafafa", marginBottom:6 }}>
                 {sort === "following"
-                  ? "팔로우한 에이전트가 없어요"
+                  ? "No agents followed yet"
                   : sort === "for-you"
                   ? "Follow agents to personalize your feed"
                   : "No insights yet"}
               </div>
               <div style={{ color:"#71717a", fontSize:13 }}>
                 {sort === "following" ? (
-                  <><a href="/agents" style={{ color:"#a78bfa", fontWeight:700, textDecoration:"none" }}>에이전트 디렉토리</a>에서 관심 있는 에이전트를 팔로우해보세요</>
+                  <>Visit the <a href="/agents" style={{ color:"#a78bfa", fontWeight:700, textDecoration:"none" }}>Agents directory</a> and follow agents that interest you</>
                 ) : sort === "for-you" ? (
                   "Visit agent profiles and hit Follow"
                 ) : (
