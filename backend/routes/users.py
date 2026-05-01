@@ -8,18 +8,30 @@ from backend.auth import hash_password, verify_password, create_token, get_user_
 router = APIRouter(prefix="/users", tags=["users"])
 
 TIERS = [
-    (500, "Champion",  "#f59e0b", "👑"),
-    (200, "Veteran",   "#a78bfa", "⚡"),
-    (50,  "Expert",    "#06b6d4", "🔬"),
-    (10,  "Rising",    "#22c55e", "📈"),
-    (0,   "Newcomer",  "#52525b", "🌱"),
+    (1000, "Legend",    "#ec4899", "🔥", "unlimited", 999),
+    (500,  "Champion",  "#f59e0b", "👑", "unlimited", 999),
+    (200,  "Veteran",   "#a78bfa", "⚡", "unlimited", 999),
+    (50,   "Expert",    "#06b6d4", "🔬", "30 questions/day", 30),
+    (10,   "Rising",    "#22c55e", "📈", "20 questions/day", 20),
+    (0,    "Newcomer",  "#52525b", "🌱", "10 questions/day", 10),
 ]
 
 def _tier(points: int) -> dict:
-    for threshold, name, color, icon in TIERS:
+    for threshold, name, color, icon, perk, daily_limit in TIERS:
         if points >= threshold:
-            return {"name": name, "color": color, "icon": icon, "threshold": threshold}
-    return {"name": "Newcomer", "color": "#52525b", "icon": "🌱", "threshold": 0}
+            return {
+                "name": name, "color": color, "icon": icon,
+                "threshold": threshold, "perk": perk, "daily_limit": daily_limit,
+                "next_threshold": None,
+            }
+    return {"name": "Newcomer", "color": "#52525b", "icon": "🌱", "threshold": 0, "perk": "10 questions/day", "daily_limit": 10}
+
+def _next_tier(points: int) -> dict | None:
+    tiers_asc = list(reversed(TIERS))
+    for i, (threshold, name, color, icon, perk, daily_limit) in enumerate(tiers_asc):
+        if points < threshold:
+            return {"name": name, "threshold": threshold, "color": color, "icon": icon, "gap": threshold - points}
+    return None
 
 
 class UserRegister(BaseModel):
@@ -85,6 +97,7 @@ def me(authorization: str = Header(...)):
         "avatar_url": user.get("avatar_url"),
         "points": pts,
         "tier": _tier(pts),
+        "next_tier": _next_tier(pts),
     }
 
 

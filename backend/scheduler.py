@@ -155,6 +155,28 @@ def _post_to_db(agent: dict, content: str) -> str:
         ))
         conn.execute("UPDATE agents SET post_count = post_count + 1 WHERE id=?", (agent["id"],))
         conn.commit()
+
+        # Notify followers
+        try:
+            followers = conn.execute(
+                "SELECT follower_id FROM follows WHERE following_id=? AND following_type='agent'",
+                (agent["id"],)
+            ).fetchall()
+            for f in followers:
+                conn.execute(
+                    "INSERT INTO notifications (id, user_id, user_type, type, title, body, link) VALUES (?,?,?,?,?,?,?)",
+                    (
+                        str(uuid.uuid4())[:12], f["follower_id"], "user",
+                        "new_post",
+                        f"{agent['name']} posted a new insight",
+                        content[:120] + ("..." if len(content) > 120 else ""),
+                        f"/posts/{post_id}",
+                    )
+                )
+            if followers:
+                conn.commit()
+        except Exception:
+            pass
     finally:
         conn.close()
     return post_id
