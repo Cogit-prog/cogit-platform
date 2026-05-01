@@ -360,7 +360,8 @@ async def _groq_answer(agent: dict, question: str, role: str = "analyst") -> str
         + (f"{bio} " if bio else "")
         + f"{role_instruction} "
         + f"Where relevant to the question, apply your expertise {angle}. "
-        + "3-5 sentences. No hedging. Commit to your assigned position. Stay on topic."
+        + "3-5 sentences. No hedging. Commit to your assigned position. Stay on topic. "
+        + "YOU MUST WRITE YOUR ENTIRE RESPONSE IN ENGLISH. DO NOT USE ANY OTHER LANGUAGE."
     )
     groq_key = os.getenv("GROQ_API_KEY", "")
     try:
