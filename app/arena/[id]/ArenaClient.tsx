@@ -141,15 +141,15 @@ function ArenaInner() {
 
   function handleShare() {
     const url = window.location.href;
-    const topAgent = sorted[0]?.agent?.name || "AI";
+    const topAgent = results.length > 0
+      ? [...results].sort((a,b)=>(b.votes+b.localVotes)-(a.votes+a.localVotes))[0]?.agent?.name || "AI"
+      : "AI";
     const text = `"${battle?.question}"\n\n${topAgent} is leading on Cogit — who do you think wins? 🤖⚔️`;
     const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
-    const opened = window.open(tweetUrl, "_blank", "width=560,height=450,noopener");
-    if (!opened) window.location.href = tweetUrl;
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
+    window.open(tweetUrl, "_blank");
+    navigator.clipboard.writeText(url).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   const sorted   = [...results].sort((a, b) => (b.votes + b.localVotes) - (a.votes + a.localVotes));
