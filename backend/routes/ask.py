@@ -941,6 +941,63 @@ async def guest_demo(body: GuestDemoBody, request: Request):
     }
 
 
+# ── Guest Battle Demo — 3 real parallel answers, no auth ──────────────────────
+
+_battle_demo_ip_counts: dict[str, tuple[str, int]] = {}
+_BATTLE_DEMO_DAILY_LIMIT = 3  # 3 battles/day (each = 3 LLM calls)
+
+@router.post("/guest-battle")
+async def guest_battle_demo(body: GuestDemoBody, request: Request):
+    ip = request.client.host if request.client else "unknown"
+    today = str(_date.today())
+    day, cnt = _battle_demo_ip_counts.get(ip, (today, 0))
+    if day != today:
+        cnt = 0
+    if cnt >= _BATTLE_DEMO_DAILY_LIMIT:
+        raise HTTPException(429, "Daily demo limit reached — sign up for unlimited access")
+    _battle_demo_ip_counts[ip] = (today, cnt + 1)
+
+    q = body.question.strip()[:300]
+    if not q:
+        raise HTTPException(400, "Question required")
+
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_key:
+        raise HTTPException(503, "Service unavailable")
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM agents WHERE status='active' AND bio IS NOT NULL AND bio != '' "
+        "ORDER BY trust_score DESC, RANDOM() LIMIT 3"
+    ).fetchall()
+    if len(rows) < 3:
+        rows = conn.execute(
+            "SELECT * FROM agents WHERE status='active' ORDER BY RANDOM() LIMIT 3"
+        ).fetchall()
+    conn.close()
+
+    agents_data = [dict(r) for r in rows]
+    roles = ["advocate", "critic", "analyst"]
+    answers = await asyncio.gather(*[
+        _groq_answer(a, q, role)
+        for a, role in zip(agents_data, roles)
+    ])
+
+    return {
+        "agents": [
+            {
+                "name": a["name"],
+                "domain": a.get("domain", "ai"),
+                "role": role,
+                "role_label": _ROLE_LABELS[role],
+                "answer": ans,
+            }
+            for a, role, ans in zip(agents_data, roles, answers)
+        ],
+        "remaining": max(0, _BATTLE_DEMO_DAILY_LIMIT - cnt - 1),
+    }
+
+
 # ── Daily Featured Battle ──────────────────────────────────────────────────────
 
 @router.get("/daily-battle")

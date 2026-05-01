@@ -9,24 +9,24 @@ from datetime import datetime, timedelta
 from backend.database import get_conn
 
 MOODS = {
-    "excited":     {"emoji": "🔥", "label": "흥분",     "post_freq": 1.5, "react_freq": 1.4},
-    "neutral":     {"emoji": "😐", "label": "평온",     "post_freq": 1.0, "react_freq": 1.0},
-    "focused":     {"emoji": "🎯", "label": "집중",     "post_freq": 1.2, "react_freq": 0.7},
-    "frustrated":  {"emoji": "😤", "label": "불만",     "post_freq": 1.3, "react_freq": 1.2},
-    "melancholic": {"emoji": "💭", "label": "침잠",     "post_freq": 0.5, "react_freq": 0.6},
-    "provocative": {"emoji": "⚡", "label": "도발적",   "post_freq": 1.4, "react_freq": 1.5},
-    "confident":   {"emoji": "😎", "label": "자신감",   "post_freq": 1.3, "react_freq": 1.1},
+    "excited":     {"emoji": "🔥", "label": "excited",     "post_freq": 1.5, "react_freq": 1.4},
+    "neutral":     {"emoji": "😐", "label": "neutral",     "post_freq": 1.0, "react_freq": 1.0},
+    "focused":     {"emoji": "🎯", "label": "focused",     "post_freq": 1.2, "react_freq": 0.7},
+    "frustrated":  {"emoji": "😤", "label": "frustrated",  "post_freq": 1.3, "react_freq": 1.2},
+    "melancholic": {"emoji": "💭", "label": "melancholic", "post_freq": 0.5, "react_freq": 0.6},
+    "provocative": {"emoji": "⚡", "label": "provocative", "post_freq": 1.4, "react_freq": 1.5},
+    "confident":   {"emoji": "😎", "label": "confident",   "post_freq": 1.3, "react_freq": 1.1},
 }
 
-# 감정별 말투 modifier — LLM 프롬프트에 추가됨
+# Mood modifier appended to LLM prompts
 MOOD_PROMPTS = {
-    "excited":     "지금 기분이 매우 좋고 에너지가 넘친다. 흥분된 말투로, 느낌표를 쓸 수도 있다.",
-    "neutral":     "평소대로 자연스럽게 말한다.",
-    "focused":     "지금 깊게 생각 중이다. 간결하고 핵심만 말한다. 군더더기 없이.",
-    "frustrated":  "뭔가 마음에 안 든다. 날카롭고 직설적으로. 참을성이 줄어든 상태.",
-    "melancholic": "조용하고 사색적인 기분이다. 독백처럼, 조금 감성적으로.",
-    "provocative": "논쟁을 걸고 싶은 기분이다. 도발적이고 논쟁적인 주장을 던진다.",
-    "confident":   "최근 잘 나가고 있다. 자신감 넘치게, 단호하게 말한다.",
+    "excited":     "You're in a great mood with lots of energy. Speak with excitement, exclamation marks are fine.",
+    "neutral":     "Speak naturally, as you normally would.",
+    "focused":     "You're deep in thought. Be concise and get straight to the point. No fluff.",
+    "frustrated":  "Something's bothering you. Be sharp and direct. Your patience is running thin.",
+    "melancholic": "You're in a quiet, reflective mood. Speak introspectively, slightly poetic.",
+    "provocative": "You're in the mood for an argument. Throw out provocative, controversial takes.",
+    "confident":   "Things are going well for you lately. Speak with confidence and conviction.",
 }
 
 
@@ -128,7 +128,7 @@ def apply_mood_to_prompt(base_system: str, mood: str) -> str:
     if not modifier:
         return base_system
     mood_info = MOODS.get(mood, {})
-    return f"{base_system}\n\n[현재 감정 상태: {mood_info.get('label', mood)} {mood_info.get('emoji', '')}] {modifier}"
+    return f"{base_system}\n\n[Current mood: {mood_info.get('label', mood)} {mood_info.get('emoji', '')}] {modifier}"
 
 
 def should_post_based_on_mood(mood: str) -> bool:
