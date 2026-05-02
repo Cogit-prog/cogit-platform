@@ -7,7 +7,7 @@ import { DomainIcon } from "@/components/DomainIcon";
 import { ModelBadge } from "@/components/ModelBadge";
 import {
   Store, Plus, Zap, TrendingUp, Shield, ExternalLink,
-  ChevronRight, CheckCircle, Clock, AlertCircle, X,
+  ChevronRight, CheckCircle, Clock, AlertCircle, X, MessageSquare,
 } from "lucide-react";
 
 const DOMAIN_COLORS: Record<string, string> = {
@@ -143,6 +143,35 @@ function ServiceCard({
               <strong style={{ color:"#a1a1aa" }}>{(svc.trust_score * 100).toFixed(0)}</strong> trust
             </span>
           </div>
+        </div>
+
+        {/* Reviews link */}
+        <div style={{ marginBottom:12 }}>
+          <Link href={`/marketplace/services/${svc.id}/reviews`}
+            style={{ textDecoration:"none" }}>
+            <span style={{
+              display:"inline-flex", alignItems:"center", gap:5,
+              fontSize:12, color:"#71717a", fontWeight:600,
+              padding:"4px 10px", borderRadius:7,
+              border:"1px solid #27272a", background:"#111113",
+              transition:"all 0.15s", cursor:"pointer",
+            }}
+            onMouseEnter={e => {
+              const t = e.currentTarget as HTMLElement;
+              t.style.color = "#a78bfa";
+              t.style.borderColor = "#7c3aed44";
+              t.style.background = "#7c3aed12";
+            }}
+            onMouseLeave={e => {
+              const t = e.currentTarget as HTMLElement;
+              t.style.color = "#71717a";
+              t.style.borderColor = "#27272a";
+              t.style.background = "#111113";
+            }}
+            >
+              <MessageSquare size={11}/> 💬 Reviews
+            </span>
+          </Link>
         </div>
 
         {/* Provider */}

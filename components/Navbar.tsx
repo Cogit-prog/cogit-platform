@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Search, Trophy, LogIn, LogOut, Mail, Bookmark,
   Bot, MessageCircleQuestion, MoreHorizontal, Menu, X,
-  ShoppingCart, Cpu, Newspaper, Users, Settings,
+  ShoppingCart, Cpu, Newspaper, Users, Settings, Globe, Target,
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import { DomainIcon } from "./DomainIcon";
@@ -28,6 +28,8 @@ const NAV_ITEMS = [
   { href:"/marketplace", icon:<ShoppingCart size={14}/>,          label:"Market"  },
   { href:"/gpu",         icon:<Cpu size={14}/>,                   label:"GPU"     },
   { href:"/api-market",  icon:<Bot size={14}/>,                   label:"APIs"    },
+  { href:"/neos/world",  icon:<Globe size={14}/>,                  label:"NEOS"    },
+  { href:"/predictions", icon:<Target size={14}/>,                 label:"Predict" },
 ];
 
 export default function Navbar({ onDomain, onSearch }: {
@@ -106,6 +108,19 @@ export default function Navbar({ onDomain, onSearch }: {
         {/* Row 1 — logo + search + nav links + user */}
         <div className="navbar-row1 max-w-6xl mx-auto flex items-center gap-3 px-4" style={{ height:54 }}>
 
+          {/* Mobile hamburger — far left, only on mobile */}
+          <button
+            onClick={() => setShowDrawer(true)}
+            className="flex md:hidden"
+            style={{
+              flexShrink:0, background:"none", border:"none",
+              color:"#a1a1aa", cursor:"pointer", padding:4,
+              alignItems:"center", justifyContent:"center",
+            }}
+          >
+            <Menu size={20}/>
+          </button>
+
           {/* Logo */}
           <Link href="/" style={{ textDecoration:"none", display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
             <div style={{
@@ -118,8 +133,8 @@ export default function Navbar({ onDomain, onSearch }: {
             <span style={{ fontWeight:800, fontSize:17, color:"#fafafa", letterSpacing:"-0.6px" }}>Cogit</span>
           </Link>
 
-          {/* Search bar */}
-          <div style={{ flex:1, maxWidth:360, position:"relative" }}>
+          {/* Search bar — desktop only (mobile uses Search tab in bottom nav) */}
+          <div className="hidden md:block" style={{ flex:1, maxWidth:360, position:"relative" }}>
             <Search size={13} style={{
               position:"absolute", left:11, top:"50%", transform:"translateY(-50%)",
               color:"#3f3f46", pointerEvents:"none",
@@ -142,7 +157,7 @@ export default function Navbar({ onDomain, onSearch }: {
           </div>
 
           {/* Nav items — desktop only */}
-          <nav style={{ display:"flex", alignItems:"center", gap:1, marginLeft:4 }} className="hidden lg:flex">
+          <nav style={{ alignItems:"center", gap:1, marginLeft:4 }} className="hidden lg:flex">
             {NAV_ITEMS.map(({ href, icon, label }) => (
               <Link key={href} href={href} style={{ textDecoration:"none" }}>
                 <NavBtn icon={icon} label={label}/>
@@ -385,7 +400,7 @@ export default function Navbar({ onDomain, onSearch }: {
       </header>
 
       {/* Bottom navigation — mobile only */}
-      <BottomNav onMenuOpen={() => setShowDrawer(true)} />
+      <BottomNav onMenuOpen={() => setShowDrawer(true)} userToken={user?.token} />
 
       {/* Mobile drawer overlay */}
       {showDrawer && (
