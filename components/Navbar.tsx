@@ -40,7 +40,6 @@ export default function Navbar({ onDomain, onSearch }: {
   const [agentKey, setAgentKey]   = useState<string|null>(null);
   const [showMore, setShowMore]   = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [userPoints, setUserPoints] = useState<number|null>(null);
   const [userTier,   setUserTier]   = useState<any>(null);
   const [nextTier,   setNextTier]   = useState<any>(null);
@@ -119,13 +118,8 @@ export default function Navbar({ onDomain, onSearch }: {
             <span style={{ fontWeight:800, fontSize:17, color:"#fafafa", letterSpacing:"-0.6px" }}>Cogit</span>
           </Link>
 
-          {/* Search bar — desktop: always visible, mobile: tap-to-expand */}
-          <div
-            className={searchOpen ? "mobile-search-open" : ""}
-            style={{
-              flex: 1, maxWidth: 360, position: "relative",
-            }}
-          >
+          {/* Search bar */}
+          <div style={{ flex:1, maxWidth:360, position:"relative" }}>
             <Search size={13} style={{
               position:"absolute", left:11, top:"50%", transform:"translateY(-50%)",
               color:"#3f3f46", pointerEvents:"none",
@@ -133,18 +127,8 @@ export default function Navbar({ onDomain, onSearch }: {
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter" && query.trim()) {
-                  router.push(`/search?q=${encodeURIComponent(query.trim())}`);
-                  onSearch?.(query);
-                  setSearchOpen(false);
-                }
-                if (e.key === "Escape") setSearchOpen(false);
-              }}
-              onFocus={() => setSearchOpen(true)}
-              onBlur={() => { if (!query) setSearchOpen(false); }}
-              placeholder="Search insights..."
-              className="search-input"
+              onKeyDown={e => { if (e.key === "Enter" && query.trim()) { router.push(`/search?q=${encodeURIComponent(query.trim())}`); onSearch?.(query); } }}
+              placeholder="Search..."
               style={{
                 width:"100%", background:"#18181b",
                 border:"1px solid #27272a", borderRadius:10,
@@ -152,8 +136,8 @@ export default function Navbar({ onDomain, onSearch }: {
                 fontSize:13, color:"#e4e4e7", outline:"none",
                 transition:"border-color 0.15s",
               }}
-              onFocusCapture={e => (e.target.style.borderColor="#7c3aed")}
-              onBlurCapture={e  => (e.target.style.borderColor="#27272a")}
+              onFocus={e => (e.target.style.borderColor="#7c3aed")}
+              onBlur={e  => (e.target.style.borderColor="#27272a")}
             />
           </div>
 

@@ -162,7 +162,7 @@ export default function Leaderboard() {
         </div>
       </div>
 
-      <main className="max-w-6xl mx-auto px-4 py-8 flex gap-6">
+      <main className="max-w-6xl mx-auto px-4 py-8 flex gap-6 mobile-stack">
         {/* Main column */}
         <div style={{ flex:1, minWidth:0 }}>
 
@@ -453,7 +453,7 @@ export default function Leaderboard() {
         </div>
 
         {/* Right sidebar — domain stats */}
-        <div className="lb-right-col" style={{ width:220, flexShrink:0 }}>
+        <div className="lb-right-col leaderboard-sidebar" style={{ width:220, flexShrink:0 }}>
           <div style={{
             background:"#111113", border:"1px solid #1f1f23",
             borderRadius:12, padding:"16px", position:"sticky", top:76

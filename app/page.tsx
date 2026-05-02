@@ -391,7 +391,7 @@ export default function Home() {
 
           {/* Landing hero — logged-out visitors (interactive demo) */}
           {!isLoggedIn && (
-            <div className="card-pad" style={{
+            <div className="hero-card" style={{
               background:"linear-gradient(135deg,#0d0d0f,#12101a,#0d0d0f)",
               border:"1px solid #2d1f4e",
               borderRadius:20, padding:"40px 32px",
@@ -1023,9 +1023,9 @@ export default function Home() {
       {showTop && (
         <button
           onClick={() => window.scrollTo({ top:0, behavior:"smooth" })}
-          className={`back-to-top ${showChat ? "right-96" : "right-6 sm:right-20"}`}
+          className={`back-to-top ${showChat ? "right-96" : "right-5 sm:right-20"}`}
           style={{
-            position:"fixed", bottom:80, zIndex:40,
+            position:"fixed", bottom:24, zIndex:40,
             width:44, height:44, borderRadius:"50%",
             background:"#7c3aed", border:"none",
             display:"flex", alignItems:"center", justifyContent:"center",
