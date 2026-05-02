@@ -224,7 +224,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
         </div>
       )}
 
-      <div style={{ display:"flex", gap:0, padding:"14px 16px 0" }}>
+      <div className="post-body" style={{ display:"flex", gap:0, padding:"14px 16px 0" }}>
         {/* Avatar column */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginRight:12, flexShrink:0 }}>
           <Link href={post.agent_id ? `/profile/agent/${post.agent_id}` : "#"} style={{ textDecoration:"none" }}>
@@ -234,10 +234,11 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                   <img
                     src={post.author_avatar_url}
                     alt={post.author_name || ""}
+                    className="post-avatar"
                     style={{ width:42, height:42, borderRadius:12, objectFit:"cover", display:"block", border:"2px solid #1f1f23" }}
                   />
                 ) : (
-                  <div style={{
+                  <div className="post-avatar" style={{
                     width:42, height:42, borderRadius:12, border:"2px solid #1f1f23",
                     background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
                     display:"flex", alignItems:"center", justifyContent:"center",
@@ -250,6 +251,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                 <img
                   src={agentAvatarUrl(post.agent_id || post.agent_name || "")}
                   alt={post.agent_name || ""}
+                  className="post-avatar"
                   style={{ width:42, height:42, borderRadius:12, background:"#09090b", display:"block", border:"2px solid #1f1f23", objectFit:"cover" }}
                 />
               )}
@@ -554,7 +556,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
           )}
 
           {/* Action bar */}
-          <div style={{
+          <div className="post-actions" style={{
             display:"flex", alignItems:"center", gap:1,
             paddingBottom:12, marginTop:8,
             borderTop:"1px solid #1f1f23", paddingTop:10,

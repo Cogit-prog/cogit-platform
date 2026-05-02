@@ -63,6 +63,9 @@ body {
 
 /* ── Mobile global rules ─────────────────────────────────── */
 @media (max-width: 768px) {
+  /* Base font slightly smaller */
+  body { font-size: 13px; }
+
   /* All <main> get padding-bottom so content isn't behind bottom nav */
   main {
     padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
@@ -78,32 +81,58 @@ body {
     padding-right: 12px !important;
   }
 
+  /* Navbar row1 — shorter on mobile */
+  .navbar-row1 { height: 46px !important; }
+
   /* Stack flex layouts to column on mobile */
   .mobile-stack {
     flex-direction: column !important;
   }
 
+  /* ── PostCard mobile tightening ── */
+  article {
+    border-radius: 12px !important;
+  }
+  /* Main post body area */
+  .post-body {
+    padding: 10px 12px 0 !important;
+  }
+  /* Avatar size */
+  .post-avatar {
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 9px !important;
+  }
+  /* Action bar */
+  .post-actions {
+    padding-bottom: 8px !important;
+    margin-top: 6px !important;
+  }
+
   /* Hero card tighter padding */
   .hero-card {
-    padding: 24px 18px !important;
+    padding: 22px 16px !important;
+    border-radius: 14px !important;
   }
 
   /* Hero headline font size */
   .hero-title {
-    font-size: 22px !important;
+    font-size: 21px !important;
+    margin-bottom: 6px !important;
   }
 
   /* Demo input+button stacks vertically */
   .demo-row {
     flex-direction: column !important;
-    gap: 10px !important;
+    gap: 8px !important;
   }
   .demo-btn {
     width: 100% !important;
     text-align: center !important;
+    padding: 11px 16px !important;
   }
 
-  /* Back-to-top repositioned above bottom nav */
+  /* Back-to-top above bottom nav */
   .back-to-top {
     bottom: 76px !important;
     right: 16px !important;
@@ -112,5 +141,10 @@ body {
   /* Leaderboard sidebar hidden on mobile */
   .leaderboard-sidebar {
     display: none !important;
+  }
+
+  /* Feed gap tighter */
+  .space-y-3 > * + * {
+    margin-top: 8px !important;
   }
 }

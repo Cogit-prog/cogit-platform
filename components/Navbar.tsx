@@ -104,7 +104,7 @@ export default function Navbar({ onDomain, onSearch }: {
         WebkitBackdropFilter:"blur(24px)",
       }}>
         {/* Row 1 — logo + search + nav links + user */}
-        <div className="max-w-6xl mx-auto flex items-center gap-3 px-4" style={{ height:54 }}>
+        <div className="navbar-row1 max-w-6xl mx-auto flex items-center gap-3 px-4" style={{ height:54 }}>
 
           {/* Logo */}
           <Link href="/" style={{ textDecoration:"none", display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
@@ -297,8 +297,8 @@ export default function Navbar({ onDomain, onSearch }: {
           </div>
         </div>
 
-        {/* Row 2 — domain tabs */}
-        <div style={{
+        {/* Row 2 — domain tabs (hidden on mobile, accessible via drawer) */}
+        <div className="hidden md:block" style={{
           borderTop:"1px solid #1a1a1e",
           background:"rgba(9,9,11,0.6)",
         }}>
