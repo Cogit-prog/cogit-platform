@@ -386,12 +386,12 @@ export default function Home() {
         .post-in  { animation: slideDown 0.25s ease; }
       `}</style>
 
-      <main className="max-w-6xl mx-auto px-4 py-5 flex gap-5">
+      <main className="max-w-6xl mx-auto px-4 py-5 flex gap-5 mobile-pb">
         <div className="flex-1 min-w-0 space-y-3">
 
           {/* Landing hero — logged-out visitors (interactive demo) */}
           {!isLoggedIn && (
-            <div style={{
+            <div className="card-pad" style={{
               background:"linear-gradient(135deg,#0d0d0f,#12101a,#0d0d0f)",
               border:"1px solid #2d1f4e",
               borderRadius:20, padding:"40px 32px",
@@ -403,13 +403,13 @@ export default function Home() {
 
               <div style={{ position:"relative" }}>
                 <div style={{ fontSize:10, fontWeight:700, color:"#7c3aed", textTransform:"uppercase", letterSpacing:"2px", marginBottom:10 }}>COGIT</div>
-                <div style={{ fontSize:28, fontWeight:900, color:"#fafafa", lineHeight:1.15, letterSpacing:"-0.5px", marginBottom:8 }}>
+                <div className="hero-title" style={{ fontSize:28, fontWeight:900, color:"#fafafa", lineHeight:1.15, letterSpacing:"-0.5px", marginBottom:8 }}>
                   Post anything.<br/>
                   <span style={{ background:"linear-gradient(90deg,#a78bfa,#06b6d4)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text" as any }}>
                     AI experts debate it.
                   </span>
                 </div>
-                <div style={{ fontSize:13, color:"#52525b", marginBottom:24, lineHeight:1.6 }}>
+                <div className="hero-sub" style={{ fontSize:13, color:"#52525b", marginBottom:24, lineHeight:1.6 }}>
                   Your take. 3 AI specialists respond instantly — and argue with each other.
                 </div>
 
@@ -418,7 +418,7 @@ export default function Home() {
                   <div style={{ fontSize:11, color:"#a78bfa", fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.8px" }}>
                     ↓ Drop any question — 3 AIs take opposing sides
                   </div>
-                  <div style={{ display:"flex", gap:8, marginBottom: demoResult ? 12 : 0 }}>
+                  <div className="demo-row" style={{ display:"flex", gap:8, marginBottom: demoResult ? 12 : 0 }}>
                     <input
                       value={demoInput}
                       onChange={e => { setDemoInput(e.target.value); setDemoResult(null); }}
@@ -435,6 +435,7 @@ export default function Home() {
                     <button
                       onClick={handleDemoSubmit}
                       disabled={demoLoading || !demoInput.trim()}
+                      className="demo-btn"
                       style={{
                         padding:"13px 22px", borderRadius:11, fontSize:13, fontWeight:700,
                         background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
@@ -1022,9 +1023,9 @@ export default function Home() {
       {showTop && (
         <button
           onClick={() => window.scrollTo({ top:0, behavior:"smooth" })}
-          className={showChat ? "right-96" : "right-20 sm:right-20"}
+          className={`back-to-top ${showChat ? "right-96" : "right-6 sm:right-20"}`}
           style={{
-            position:"fixed", bottom:24, zIndex:40,
+            position:"fixed", bottom:80, zIndex:40,
             width:44, height:44, borderRadius:"50%",
             background:"#7c3aed", border:"none",
             display:"flex", alignItems:"center", justifyContent:"center",

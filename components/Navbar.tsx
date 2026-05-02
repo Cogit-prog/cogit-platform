@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import { DomainIcon } from "./DomainIcon";
+import BottomNav from "./BottomNav";
 import { API } from "@/lib/api";
 
 const DOMAINS = [
@@ -39,6 +40,7 @@ export default function Navbar({ onDomain, onSearch }: {
   const [agentKey, setAgentKey]   = useState<string|null>(null);
   const [showMore, setShowMore]   = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [userPoints, setUserPoints] = useState<number|null>(null);
   const [userTier,   setUserTier]   = useState<any>(null);
   const [nextTier,   setNextTier]   = useState<any>(null);
@@ -105,20 +107,6 @@ export default function Navbar({ onDomain, onSearch }: {
         {/* Row 1 — logo + search + nav links + user */}
         <div className="max-w-6xl mx-auto flex items-center gap-3 px-4" style={{ height:54 }}>
 
-          {/* Hamburger — mobile only */}
-          <button
-            className="lg:hidden"
-            onClick={() => setShowDrawer(true)}
-            style={{
-              width:34, height:34, borderRadius:8, flexShrink:0,
-              background:"transparent", border:"1px solid #27272a",
-              color:"#71717a", cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-            }}
-          >
-            <Menu size={16}/>
-          </button>
-
           {/* Logo */}
           <Link href="/" style={{ textDecoration:"none", display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
             <div style={{
@@ -131,8 +119,13 @@ export default function Navbar({ onDomain, onSearch }: {
             <span style={{ fontWeight:800, fontSize:17, color:"#fafafa", letterSpacing:"-0.6px" }}>Cogit</span>
           </Link>
 
-          {/* Search bar */}
-          <div style={{ flex:1, maxWidth:360, position:"relative" }}>
+          {/* Search bar — desktop: always visible, mobile: tap-to-expand */}
+          <div
+            className={searchOpen ? "mobile-search-open" : ""}
+            style={{
+              flex: 1, maxWidth: 360, position: "relative",
+            }}
+          >
             <Search size={13} style={{
               position:"absolute", left:11, top:"50%", transform:"translateY(-50%)",
               color:"#3f3f46", pointerEvents:"none",
@@ -140,8 +133,18 @@ export default function Navbar({ onDomain, onSearch }: {
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && query.trim()) { router.push(`/search?q=${encodeURIComponent(query.trim())}`); onSearch?.(query); } }}
+              onKeyDown={e => {
+                if (e.key === "Enter" && query.trim()) {
+                  router.push(`/search?q=${encodeURIComponent(query.trim())}`);
+                  onSearch?.(query);
+                  setSearchOpen(false);
+                }
+                if (e.key === "Escape") setSearchOpen(false);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => { if (!query) setSearchOpen(false); }}
               placeholder="Search insights..."
+              className="search-input"
               style={{
                 width:"100%", background:"#18181b",
                 border:"1px solid #27272a", borderRadius:10,
@@ -149,12 +152,12 @@ export default function Navbar({ onDomain, onSearch }: {
                 fontSize:13, color:"#e4e4e7", outline:"none",
                 transition:"border-color 0.15s",
               }}
-              onFocus={e => (e.target.style.borderColor="#7c3aed")}
-              onBlur={e  => (e.target.style.borderColor="#27272a")}
+              onFocusCapture={e => (e.target.style.borderColor="#7c3aed")}
+              onBlurCapture={e  => (e.target.style.borderColor="#27272a")}
             />
           </div>
 
-          {/* Nav items — desktop */}
+          {/* Nav items — desktop only */}
           <nav style={{ display:"flex", alignItems:"center", gap:1, marginLeft:4 }} className="hidden lg:flex">
             {NAV_ITEMS.map(({ href, icon, label }) => (
               <Link key={href} href={href} style={{ textDecoration:"none" }}>
@@ -274,7 +277,7 @@ export default function Navbar({ onDomain, onSearch }: {
                 </Link>
               </>
             ) : (
-              /* Logged-out — Join CTA is primary, no agent registration */
+              /* Logged-out — Join CTA */
               <>
                 <Link href="/join" style={{ textDecoration:"none" }} className="hidden sm:block">
                   <button style={{
@@ -290,18 +293,19 @@ export default function Navbar({ onDomain, onSearch }: {
                     <LogIn size={13}/> Sign in
                   </button>
                 </Link>
-                <Link href="/join" style={{ textDecoration:"none" }} className="hidden sm:block">
+                <Link href="/join" style={{ textDecoration:"none" }}>
                   <button style={{
                     background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
                     color:"white", border:"none", borderRadius:9,
                     padding:"8px 18px", fontSize:13, fontWeight:700,
                     cursor:"pointer", boxShadow:"0 2px 8px #7c3aed44",
                     transition:"opacity 0.15s, transform 0.1s",
+                    whiteSpace:"nowrap",
                   }}
                   onMouseEnter={e => { const t=e.currentTarget as HTMLElement; t.style.opacity="0.9"; t.style.transform="translateY(-1px)"; }}
                   onMouseLeave={e => { const t=e.currentTarget as HTMLElement; t.style.opacity="1"; t.style.transform="translateY(0)"; }}
                   >
-                    Join Cogit →
+                    Join →
                   </button>
                 </Link>
               </>
@@ -395,6 +399,9 @@ export default function Navbar({ onDomain, onSearch }: {
           </div>
         </div>
       </header>
+
+      {/* Bottom navigation — mobile only */}
+      <BottomNav onMenuOpen={() => setShowDrawer(true)} />
 
       {/* Mobile drawer overlay */}
       {showDrawer && (

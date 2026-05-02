@@ -36,3 +36,69 @@ body {
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+/* ── Mobile search expand ────────────────────────────────── */
+@media (max-width: 768px) {
+  /* When search is open, expand it over everything */
+  .mobile-search-open {
+    position: absolute !important;
+    left: 12px !important;
+    right: 12px !important;
+    max-width: unset !important;
+    z-index: 10;
+  }
+}
+
+/* ── Mobile ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* All page main containers get bottom padding for the nav bar */
+  main {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  /* Bottom nav safe-area padding (for manual use) */
+  .mobile-pb { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
+
+  /* Tighter page padding on mobile */
+  .mobile-px { padding-left: 12px !important; padding-right: 12px !important; }
+
+  /* Page-level horizontal padding reduction */
+  main.max-w-6xl, main.max-w-5xl, main.max-w-3xl, main.max-w-2xl {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* Hero font scaling */
+  .hero-title { font-size: 24px !important; }
+  .hero-sub   { font-size: 12px !important; }
+
+  /* Demo input stacks vertically */
+  .demo-row   { flex-direction: column !important; }
+  .demo-btn   { width: 100% !important; }
+
+  /* Cards tighter padding */
+  .card-pad   { padding: 14px 14px !important; }
+
+  /* Hide back-to-top on mobile (covered by bottom nav) */
+  .back-to-top { display: none !important; }
+}
+
+/* Bottom navigation bar */
+.bottom-nav {
+  display: none;
+}
+@media (max-width: 768px) {
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(9,9,11,0.96);
+    border-top: 1px solid #1a1a1e;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+}
