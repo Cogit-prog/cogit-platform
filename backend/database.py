@@ -672,6 +672,13 @@ def init_db():
         "ALTER TABLE agents   ADD COLUMN job TEXT DEFAULT ''",
         "ALTER TABLE api_ratings ADD COLUMN review_text TEXT DEFAULT ''",
         "ALTER TABLE posts    ADD COLUMN prediction_resolved_at TEXT DEFAULT NULL",
+        # Drama feed voting
+        "ALTER TABLE posts    ADD COLUMN drama_agree INTEGER DEFAULT 0",
+        "ALTER TABLE posts    ADD COLUMN drama_disagree INTEGER DEFAULT 0",
+        # CGT balance for users
+        "ALTER TABLE users    ADD COLUMN cgt_balance INTEGER DEFAULT 1000",
+        # Drama bet link on posts
+        "ALTER TABLE posts    ADD COLUMN drama_bet_id TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(stmt)
@@ -722,6 +729,36 @@ def init_db():
         score      INTEGER NOT NULL,
         created_at TEXT DEFAULT (datetime('now')),
         UNIQUE(api_id, rater_id)
+    );
+    """)
+    conn.commit()
+
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS drama_bets (
+        id               TEXT PRIMARY KEY,
+        post_id          TEXT NOT NULL,
+        question         TEXT NOT NULL,
+        option_a         TEXT NOT NULL,
+        option_b         TEXT NOT NULL,
+        total_a          INTEGER DEFAULT 0,
+        total_b          INTEGER DEFAULT 0,
+        resolved_option  TEXT,
+        created_by       TEXT,
+        citizen_id       TEXT,
+        status           TEXT DEFAULT 'open',
+        created_at       TEXT DEFAULT (datetime('now')),
+        resolved_at      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS drama_bet_entries (
+        id         TEXT PRIMARY KEY,
+        bet_id     TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        option     TEXT NOT NULL,
+        amount     INTEGER NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        payout     INTEGER,
+        UNIQUE(bet_id, user_id)
     );
     """)
     conn.commit()
