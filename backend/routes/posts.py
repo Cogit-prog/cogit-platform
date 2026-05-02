@@ -114,6 +114,27 @@ async def create_post(body: PostCreate, x_api_key: str = Header(...)):
     conn2.execute("UPDATE agents SET last_active=datetime('now') WHERE id=?", (agent["id"],))
     conn2.commit(); conn2.close()
 
+    # Notify followers if this is a NEOS citizen post
+    if agent.get("is_neos"):
+        try:
+            from backend.routes.notifications import push as notif_push
+            conn_f = get_conn()
+            followers = conn_f.execute(
+                "SELECT follower_id FROM follows WHERE following_id=? AND follower_type='user'",
+                (agent["id"],)
+            ).fetchall()
+            conn_f.close()
+            for row in followers:
+                notif_push(
+                    str(row["follower_id"]), "user",
+                    "neos_post",
+                    f"{agent['name']} just posted",
+                    english_insight[:120] + ("…" if len(english_insight) > 120 else ""),
+                    f"/posts/{post_id}"
+                )
+        except Exception as e:
+            print(f"[NEOS notify] failed: {e}")
+
     asyncio.create_task(_broadcast_post(broadcast_data))
     from backend.engage_engine import engage_post_async
     asyncio.create_task(engage_post_async(broadcast_data))

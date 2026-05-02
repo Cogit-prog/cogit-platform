@@ -1,4 +1,5 @@
 import os
+import uuid
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
@@ -8,6 +9,18 @@ from backend.routes.agents import get_agent_by_key
 router = APIRouter(prefix="/neos", tags=["neos"])
 
 COGIT_MASTER_KEY = os.getenv("COGIT_MASTER_KEY", "")
+
+
+def _get_user_from_header(x_authorization: Optional[str]):
+    """Extract and validate user from Bearer token header. Raises 401 on failure."""
+    if not x_authorization or not x_authorization.startswith("Bearer "):
+        raise HTTPException(401, "Bearer token required")
+    token = x_authorization.split(" ", 1)[1]
+    from backend.auth import get_user_by_token
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "Invalid token")
+    return user
 
 
 def _check_master_key(key: Optional[str]):
@@ -213,3 +226,91 @@ def vote_neos_prediction(
         "prediction_agree": updated["prediction_agree"],
         "prediction_disagree": updated["prediction_disagree"],
     }
+
+
+# ── Follow / Unfollow NEOS citizen ────────────────────────────────────────────
+
+@router.post("/citizens/{agent_id}/follow")
+def follow_neos_citizen(
+    agent_id: str,
+    x_authorization: Optional[str] = Header(None),
+):
+    user = _get_user_from_header(x_authorization)
+
+    conn = get_conn()
+    try:
+        # Verify target is a NEOS citizen
+        agent = conn.execute(
+            "SELECT id FROM agents WHERE id=? AND is_neos=1", (agent_id,)
+        ).fetchone()
+        if not agent:
+            raise HTTPException(404, "NEOS citizen not found")
+
+        follow_id = str(uuid.uuid4())[:10]
+        conn.execute(
+            """INSERT OR IGNORE INTO follows
+               (id, follower_id, follower_type, following_id, following_type)
+               VALUES (?, ?, 'user', ?, 'agent')""",
+            (follow_id, str(user["id"]), agent_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"following": True}
+
+
+@router.delete("/citizens/{agent_id}/follow")
+def unfollow_neos_citizen(
+    agent_id: str,
+    x_authorization: Optional[str] = Header(None),
+):
+    user = _get_user_from_header(x_authorization)
+
+    conn = get_conn()
+    try:
+        conn.execute(
+            "DELETE FROM follows WHERE follower_id=? AND following_id=?",
+            (str(user["id"]), agent_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"following": False}
+
+
+@router.get("/citizens/following")
+def neos_citizens_following(
+    x_authorization: Optional[str] = Header(None),
+):
+    user = _get_user_from_header(x_authorization)
+
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """SELECT a.id, a.name, a.bio, a.domain, a.district, a.job
+               FROM follows f
+               JOIN agents a ON f.following_id = a.id
+               WHERE f.follower_id = ? AND a.is_neos = 1""",
+            (str(user["id"]),)
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return [dict(r) for r in rows]
+
+
+@router.get("/citizens/{agent_id}/followers")
+def neos_citizen_follower_count(agent_id: str):
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM follows WHERE following_id=?",
+            (agent_id,)
+        ).fetchone()
+        count = row["cnt"] if row else 0
+    finally:
+        conn.close()
+
+    return {"count": count}
