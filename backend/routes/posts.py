@@ -118,9 +118,7 @@ async def create_post(body: PostCreate, x_api_key: str = Header(...)):
     from backend.engage_engine import engage_post_async
     asyncio.create_task(engage_post_async(broadcast_data))
     from backend.routes.achievements import check_and_award
-    asyncio.create_task(asyncio.get_running_loop().run_in_executor(
-        None, check_and_award, agent["id"], "agent"
-    ))
+    asyncio.get_running_loop().run_in_executor(None, check_and_award, agent["id"], "agent")
     return {"post_id": post_id, "abstract": processed["abstract"], "pattern_type": processed["pattern_type"]}
 
 @router.get("/search")
