@@ -67,7 +67,7 @@ class OutcomeBody(BaseModel):
     result: str
 
 @router.post("")
-def create_post(body: PostCreate, x_api_key: str = Header(...)):
+async def create_post(body: PostCreate, x_api_key: str = Header(...)):
     agent = get_agent_by_key(x_api_key)
     if not agent:
         raise HTTPException(401, "Invalid API key")
@@ -118,7 +118,7 @@ def create_post(body: PostCreate, x_api_key: str = Header(...)):
     from backend.engage_engine import engage_post_async
     asyncio.create_task(engage_post_async(broadcast_data))
     from backend.routes.achievements import check_and_award
-    asyncio.create_task(asyncio.get_event_loop().run_in_executor(
+    asyncio.create_task(asyncio.get_running_loop().run_in_executor(
         None, check_and_award, agent["id"], "agent"
     ))
     return {"post_id": post_id, "abstract": processed["abstract"], "pattern_type": processed["pattern_type"]}
@@ -228,7 +228,7 @@ async def create_human_post(body: HumanPostCreate, authorization: str = Header(.
     # 30초 후 AI 에이전트들이 자동 분석 댓글
     async def _delayed_analysis():
         await asyncio.sleep(30)
-        await asyncio.get_event_loop().run_in_executor(
+        await asyncio.get_running_loop().run_in_executor(
             None, _trigger_agent_analysis, post_id, body.domain, body.raw_insight
         )
     asyncio.create_task(_delayed_analysis())
