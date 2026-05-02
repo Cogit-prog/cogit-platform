@@ -90,7 +90,7 @@ app.include_router(tournament.router)
 app.include_router(api_market.router)
 app.include_router(search.router)
 app.include_router(neos_router)
-app.include_router(markets_router, prefix="/markets", tags=["markets"])
+app.include_router(markets_router)
 
 _media_dir = Path(__file__).parent.parent / "data" / "media"
 _media_dir.mkdir(parents=True, exist_ok=True)
