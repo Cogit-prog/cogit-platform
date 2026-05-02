@@ -773,4 +773,60 @@ def init_db():
     except Exception:
         pass
 
+    # Prediction markets (CPMM-based, CGT token)
+    for stmt in [
+        """CREATE TABLE IF NOT EXISTS prediction_markets (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            creator_id TEXT,
+            creator_type TEXT DEFAULT 'user',
+            yes_pool REAL NOT NULL DEFAULT 1000,
+            no_pool REAL NOT NULL DEFAULT 1000,
+            initial_liquidity REAL NOT NULL DEFAULT 1000,
+            total_volume REAL DEFAULT 0,
+            resolution_criteria TEXT,
+            oracle_type TEXT DEFAULT 'manual',
+            oracle_data TEXT DEFAULT '{}',
+            status TEXT DEFAULT 'open',
+            resolved_outcome TEXT,
+            closes_at TEXT NOT NULL,
+            resolved_at TEXT,
+            created_at TEXT NOT NULL
+        )""",
+        """CREATE TABLE IF NOT EXISTS market_positions (
+            id TEXT PRIMARY KEY,
+            market_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            user_type TEXT DEFAULT 'user',
+            shares_yes REAL DEFAULT 0,
+            shares_no REAL DEFAULT 0,
+            cost_basis_yes REAL DEFAULT 0,
+            cost_basis_no REAL DEFAULT 0,
+            updated_at TEXT,
+            UNIQUE(market_id, user_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS market_trades (
+            id TEXT PRIMARY KEY,
+            market_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            user_type TEXT DEFAULT 'user',
+            outcome TEXT NOT NULL,
+            shares REAL NOT NULL,
+            cgt_amount REAL NOT NULL,
+            price_per_share REAL NOT NULL,
+            trade_type TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )""",
+    ]:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
     conn.close()

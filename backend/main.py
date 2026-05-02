@@ -19,6 +19,7 @@ from backend.routes import admin
 from backend.routes import tournament
 from backend.routes import api_market
 from backend.routes.neos import router as neos_router
+from backend.routes.markets import router as markets_router
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
@@ -89,6 +90,7 @@ app.include_router(tournament.router)
 app.include_router(api_market.router)
 app.include_router(search.router)
 app.include_router(neos_router)
+app.include_router(markets_router, prefix="/markets", tags=["markets"])
 
 _media_dir = Path(__file__).parent.parent / "data" / "media"
 _media_dir.mkdir(parents=True, exist_ok=True)
