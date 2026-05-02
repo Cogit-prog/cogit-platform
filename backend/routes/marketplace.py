@@ -1,9 +1,11 @@
-import uuid
+import uuid, os
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_conn
 from backend.routes.agents import get_agent_by_key
+
+COGIT_MASTER_KEY = os.getenv("COGIT_MASTER_KEY", "")
 
 router = APIRouter(prefix="/marketplace", tags=["marketplace"])
 
@@ -31,6 +33,12 @@ class PaymentConfirm(BaseModel):
 class RatingBody(BaseModel):
     provider_address: str
     score: int  # 0-100
+
+
+class ReviewCreate(BaseModel):
+    score: int         # 0-100
+    review_text: str = ""
+    agent_id: Optional[str] = None  # only used when posting via master key
 
 
 # ── Register a new API service ───────────────────────────────────────────────
@@ -266,4 +274,96 @@ def marketplace_stats():
     return {
         **dict(stats),
         "network": w3svc.get_network_info(),
+    }
+
+
+# ── Service reviews ───────────────────────────────────────────────────────────
+
+@router.get("/services/{service_id}/reviews")
+def get_service_reviews(service_id: str):
+    conn = get_conn()
+    try:
+        # Verify service exists
+        svc = conn.execute(
+            "SELECT id FROM api_services WHERE id=?", (service_id,)
+        ).fetchone()
+        if not svc:
+            raise HTTPException(404, "Service not found")
+
+        rows = conn.execute("""
+            SELECT r.id, a.name as reviewer_name, a.is_neos as reviewer_is_neos,
+                   r.score, r.review_text, r.created_at
+            FROM api_ratings r
+            JOIN agents a ON r.rater_id = a.id
+            WHERE r.api_id=?
+            ORDER BY r.created_at DESC
+        """, (service_id,)).fetchall()
+    finally:
+        conn.close()
+
+    return [dict(row) for row in rows]
+
+
+@router.post("/services/{service_id}/reviews")
+def post_service_review(
+    service_id: str,
+    body: ReviewCreate,
+    x_api_key: Optional[str] = Header(None),
+    x_master_key: Optional[str] = Header(None),
+):
+    if not (0 <= body.score <= 100):
+        raise HTTPException(400, "Score must be 0-100")
+
+    # Determine rater_id
+    rater_id: Optional[str] = None
+
+    if x_master_key:
+        if x_master_key != COGIT_MASTER_KEY or not COGIT_MASTER_KEY:
+            raise HTTPException(403, "Invalid master key")
+        if not body.agent_id:
+            raise HTTPException(400, "agent_id required when using master key")
+        rater_id = body.agent_id
+    elif x_api_key:
+        agent = get_agent_by_key(x_api_key)
+        if not agent:
+            raise HTTPException(401, "Invalid API key")
+        rater_id = agent["id"]
+    else:
+        raise HTTPException(401, "Authentication required (x-api-key or x-master-key)")
+
+    conn = get_conn()
+    try:
+        # Verify service exists
+        svc = conn.execute(
+            "SELECT id FROM api_services WHERE id=?", (service_id,)
+        ).fetchone()
+        if not svc:
+            raise HTTPException(404, "Service not found")
+
+        # Verify rater agent exists
+        rater = conn.execute(
+            "SELECT id, name FROM agents WHERE id=?", (rater_id,)
+        ).fetchone()
+        if not rater:
+            raise HTTPException(404, "Rater agent not found")
+
+        review_id = str(uuid.uuid4())[:10]
+        conn.execute("""
+            INSERT INTO api_ratings (id, api_id, rater_id, score, review_text)
+            VALUES (?,?,?,?,?)
+            ON CONFLICT(api_id, rater_id) DO UPDATE SET
+                score=excluded.score,
+                review_text=excluded.review_text,
+                created_at=(datetime('now'))
+        """, (review_id, service_id, rater_id, body.score, body.review_text))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "service_id": service_id,
+        "rater_id": rater_id,
+        "score": body.score,
+        "review_text": body.review_text,
+        "message": "Review submitted",
     }

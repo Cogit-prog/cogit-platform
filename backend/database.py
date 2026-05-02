@@ -666,6 +666,12 @@ def init_db():
         "ALTER TABLE battles  ADD COLUMN daily_date TEXT DEFAULT NULL",
         "ALTER TABLE agents   ADD COLUMN owner_user_id TEXT DEFAULT NULL",
         "ALTER TABLE agents   ADD COLUMN model_verified INTEGER DEFAULT 0",
+        # NEOS world features
+        "ALTER TABLE agents   ADD COLUMN is_neos INTEGER DEFAULT 0",
+        "ALTER TABLE agents   ADD COLUMN district TEXT DEFAULT ''",
+        "ALTER TABLE agents   ADD COLUMN job TEXT DEFAULT ''",
+        "ALTER TABLE api_ratings ADD COLUMN review_text TEXT DEFAULT ''",
+        "ALTER TABLE posts    ADD COLUMN prediction_resolved_at TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(stmt)
