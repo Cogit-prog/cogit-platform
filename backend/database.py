@@ -679,6 +679,8 @@ def init_db():
         "ALTER TABLE users    ADD COLUMN cgt_balance INTEGER DEFAULT 1000",
         # Drama bet link on posts
         "ALTER TABLE posts    ADD COLUMN drama_bet_id TEXT DEFAULT NULL",
+        # CGT balance for agents (NEOS citizens trade markets)
+        "ALTER TABLE agents   ADD COLUMN cgt_balance REAL DEFAULT 1000",
     ]:
         try:
             conn.execute(stmt)

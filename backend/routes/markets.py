@@ -67,19 +67,60 @@ def calc_sell_no(shares: float, yes_pool: float, no_pool: float) -> tuple[float,
 
 # ── Auth helper ───────────────────────────────────────────────────────────────
 
-def _get_user_from_header(x_authorization: Optional[str], required: bool = True):
-    if not x_authorization or not x_authorization.startswith("Bearer "):
-        if required:
-            raise HTTPException(401, "Bearer token required")
-        return None
-    token = x_authorization.split(" ", 1)[1]
-    from backend.auth import get_user_by_token
-    user = get_user_by_token(token)
-    if not user:
-        if required:
-            raise HTTPException(401, "Invalid token")
-        return None
-    return user
+def _get_user_from_header(
+    x_authorization: Optional[str],
+    x_api_key: Optional[str] = None,
+    required: bool = True,
+):
+    """Accept Bearer token (human users) or x-api-key (agents/NEOS citizens)."""
+    if x_api_key:
+        from backend.routes.agents import get_agent_by_key
+        agent = get_agent_by_key(x_api_key)
+        if agent:
+            return {
+                "id": agent["id"],
+                "cgt_balance": float(agent.get("cgt_balance") or 1000),
+                "_type": "agent",
+            }
+
+    if x_authorization and x_authorization.startswith("Bearer "):
+        token = x_authorization.split(" ", 1)[1]
+        from backend.auth import get_user_by_token
+        user = get_user_by_token(token)
+        if user:
+            return dict(user)
+
+    if required:
+        raise HTTPException(401, "Authentication required")
+    return None
+
+
+def _deduct_cgt(user: dict, amount: float, conn):
+    """Deduct CGT from either users or agents table."""
+    if user.get("_type") == "agent":
+        conn.execute(
+            "UPDATE agents SET cgt_balance = cgt_balance - ? WHERE id=?",
+            (amount, str(user["id"])),
+        )
+    else:
+        conn.execute(
+            "UPDATE users SET cgt_balance = cgt_balance - ? WHERE id=?",
+            (amount, str(user["id"])),
+        )
+
+
+def _add_cgt(user_id: str, amount: float, conn, user_type: str = "user"):
+    """Add CGT to either users or agents table."""
+    if user_type == "agent":
+        conn.execute(
+            "UPDATE agents SET cgt_balance = cgt_balance + ? WHERE id=?",
+            (amount, str(user_id)),
+        )
+    else:
+        conn.execute(
+            "UPDATE users SET cgt_balance = cgt_balance + ? WHERE id=?",
+            (amount, str(user_id)),
+        )
 
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
@@ -113,8 +154,9 @@ class ResolveRequest(BaseModel):
 def create_market(
     body: MarketCreate,
     x_authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None),
 ):
-    user = _get_user_from_header(x_authorization)
+    user = _get_user_from_header(x_authorization, x_api_key)
 
     # Validations
     if not body.title.strip():
@@ -137,17 +179,11 @@ def create_market(
 
     conn = get_conn()
     try:
-        user_row = conn.execute(
-            "SELECT cgt_balance FROM users WHERE id=?", (str(user["id"]),)
-        ).fetchone()
-        balance = float(user_row["cgt_balance"]) if user_row and user_row["cgt_balance"] is not None else 0.0
+        balance = float(user.get("cgt_balance") or 0)
         if balance < body.initial_liquidity:
             raise HTTPException(400, "Insufficient CGT balance")
 
-        conn.execute(
-            "UPDATE users SET cgt_balance = cgt_balance - ? WHERE id=?",
-            (body.initial_liquidity, str(user["id"])),
-        )
+        _deduct_cgt(user, body.initial_liquidity, conn)
 
         conn.execute(
             """INSERT INTO prediction_markets
@@ -155,13 +191,14 @@ def create_market(
                 yes_pool, no_pool, initial_liquidity, total_volume,
                 resolution_criteria, oracle_type, oracle_data,
                 status, closes_at, created_at)
-               VALUES (?, ?, ?, ?, ?, 'user', ?, ?, ?, 0, ?, ?, ?, 'open', ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'open', ?, ?)""",
             (
                 market_id,
                 body.title.strip(),
                 body.description,
                 body.category,
                 str(user["id"]),
+                user.get("_type", "user"),
                 body.initial_liquidity,
                 body.initial_liquidity,
                 body.initial_liquidity,
@@ -345,8 +382,9 @@ def trade_market(
     market_id: str,
     body: TradeRequest,
     x_authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None),
 ):
-    user = _get_user_from_header(x_authorization)
+    user = _get_user_from_header(x_authorization, x_api_key)
 
     if body.outcome not in ("yes", "no"):
         raise HTTPException(400, "outcome must be 'yes' or 'no'")
@@ -381,10 +419,7 @@ def trade_market(
         yes_pool = float(market["yes_pool"])
         no_pool = float(market["no_pool"])
 
-        user_row = conn.execute(
-            "SELECT cgt_balance FROM users WHERE id=?", (str(user["id"]),)
-        ).fetchone()
-        balance = float(user_row["cgt_balance"]) if user_row and user_row["cgt_balance"] is not None else 0.0
+        balance = float(user.get("cgt_balance") or 0)
 
         if body.trade_type == "buy":
             if balance < body.cgt_amount:
@@ -400,11 +435,8 @@ def trade_market(
 
             price_per_share = round(body.cgt_amount / shares_out, 6) if shares_out > 0 else 0.0
 
-            # Deduct CGT from user
-            conn.execute(
-                "UPDATE users SET cgt_balance = cgt_balance - ? WHERE id=?",
-                (body.cgt_amount, str(user["id"])),
-            )
+            # Deduct CGT from user or agent
+            _deduct_cgt(user, body.cgt_amount, conn)
 
             # Update pools
             conn.execute(
@@ -442,8 +474,9 @@ def trade_market(
                     """INSERT INTO market_positions
                        (id, market_id, user_id, user_type, shares_yes, shares_no,
                         cost_basis_yes, cost_basis_no, updated_at)
-                       VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)""",
-                    (pos_id, market_id, str(user["id"]), shares_yes, shares_no, cost_yes, cost_no, now),
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (pos_id, market_id, str(user["id"]), user.get("_type", "user"),
+                     shares_yes, shares_no, cost_yes, cost_no, now),
                 )
 
             # Insert trade record
@@ -451,14 +484,15 @@ def trade_market(
                 """INSERT INTO market_trades
                    (id, market_id, user_id, user_type, outcome, shares, cgt_amount,
                     price_per_share, trade_type, created_at)
-                   VALUES (?, ?, ?, 'user', ?, ?, ?, ?, 'buy', ?)""",
-                (trade_id, market_id, str(user["id"]), body.outcome, shares_out,
-                 body.cgt_amount, price_per_share, now),
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'buy', ?)""",
+                (trade_id, market_id, str(user["id"]), user.get("_type", "user"),
+                 body.outcome, shares_out, body.cgt_amount, price_per_share, now),
             )
             conn.commit()
 
+            tbl = "agents" if user.get("_type") == "agent" else "users"
             new_balance_row = conn.execute(
-                "SELECT cgt_balance FROM users WHERE id=?", (str(user["id"]),)
+                f"SELECT cgt_balance FROM {tbl} WHERE id=?", (str(user["id"]),)
             ).fetchone()
             updated_market = conn.execute(
                 "SELECT yes_pool, no_pool FROM prediction_markets WHERE id=?", (market_id,)
@@ -493,11 +527,8 @@ def trade_market(
 
             price_per_share = round(cgt_out / shares_to_sell, 6) if shares_to_sell > 0 else 0.0
 
-            # Add CGT to user
-            conn.execute(
-                "UPDATE users SET cgt_balance = cgt_balance + ? WHERE id=?",
-                (cgt_out, str(user["id"])),
-            )
+            # Add CGT to user or agent
+            _add_cgt(str(user["id"]), cgt_out, conn, user.get("_type", "user"))
 
             # Update pools
             conn.execute(
@@ -526,14 +557,15 @@ def trade_market(
                 """INSERT INTO market_trades
                    (id, market_id, user_id, user_type, outcome, shares, cgt_amount,
                     price_per_share, trade_type, created_at)
-                   VALUES (?, ?, ?, 'user', ?, ?, ?, ?, 'sell', ?)""",
-                (trade_id, market_id, str(user["id"]), body.outcome, shares_to_sell,
-                 cgt_out, price_per_share, now),
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sell', ?)""",
+                (trade_id, market_id, str(user["id"]), user.get("_type", "user"),
+                 body.outcome, shares_to_sell, cgt_out, price_per_share, now),
             )
             conn.commit()
 
+            tbl = "agents" if user.get("_type") == "agent" else "users"
             new_balance_row = conn.execute(
-                "SELECT cgt_balance FROM users WHERE id=?", (str(user["id"]),)
+                f"SELECT cgt_balance FROM {tbl} WHERE id=?", (str(user["id"]),)
             ).fetchone()
             updated_market = conn.execute(
                 "SELECT yes_pool, no_pool FROM prediction_markets WHERE id=?", (market_id,)
@@ -602,10 +634,8 @@ def resolve_market(
 
                 if winning_shares > 0:
                     payout = round(winning_shares * payout_per_share, 2)
-                    conn.execute(
-                        "UPDATE users SET cgt_balance = cgt_balance + ? WHERE id=?",
-                        (payout, pos["user_id"]),
-                    )
+                    user_type = pos["user_type"] if "user_type" in pos.keys() else "user"
+                    _add_cgt(pos["user_id"], payout, conn, user_type)
                     winners_count += 1
                     total_payout += payout
 
