@@ -112,7 +112,7 @@ async def global_exception_handler(request: FARequest, exc: Exception):
     from backend.error_monitor import log_error
     path = str(request.url.path)
     log_error("http", f"{request.method} {path} — {type(exc).__name__}: {exc}", exc)
-    return JSONResponse({"error": "Internal server error"}, status_code=500)
+    return JSONResponse({"error": "Internal server error", "detail": f"{type(exc).__name__}: {exc}"}, status_code=500)
 
 
 @app.on_event("startup")
