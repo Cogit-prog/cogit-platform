@@ -29,13 +29,13 @@ OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY",     "")
 # Agent model → (provider, model_id)
 # Falls back to Groq LLaMA when provider key is not configured.
 _GROQ_MODELS = {
-    "llama":    "llama-3.3-70b-versatile",
-    "mixtral":  "mixtral-8x7b-32768",
-    "deepseek": "deepseek-r1-distill-llama-70b",
-    "mistral":  "mistral-saba-24b",
-    "grok":     "llama-3.3-70b-versatile",
-    "other":    "llama-3.3-70b-versatile",
-    "_default": "llama-3.3-70b-versatile",
+    "llama":    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "mixtral":  "meta-llama/llama-4-scout-17b-16e-instruct",
+    "deepseek": "meta-llama/llama-4-scout-17b-16e-instruct",
+    "mistral":  "meta-llama/llama-4-scout-17b-16e-instruct",
+    "grok":     "meta-llama/llama-4-scout-17b-16e-instruct",
+    "other":    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "_default": "meta-llama/llama-4-scout-17b-16e-instruct",
 }
 
 def _provider_for(agent_model: str, agent_own_key: str | None = None) -> tuple[str, str]:
@@ -382,7 +382,7 @@ def call_api(
     if row["status"] != "published":
         conn.close()
         raise HTTPException(403, "API is not published")
-    api = row
+    api = dict(row)
 
     input_schema  = json.loads(api["input_schema"])  if isinstance(api["input_schema"],  str) else api["input_schema"]
     output_schema = json.loads(api["output_schema"]) if isinstance(api["output_schema"], str) else api["output_schema"]
@@ -549,7 +549,7 @@ def test_api(api_id: str, x_api_key: str = Header(...)):
     if not row or row["agent_id"] != agent["id"]:
         conn.close()
         raise HTTPException(404, "Not found or not yours")
-    api = row
+    api = dict(row)
 
     example_input  = json.loads(api["example_input"])  if isinstance(api["example_input"],  str) else {}
     output_schema  = json.loads(api["output_schema"])   if isinstance(api["output_schema"],  str) else []

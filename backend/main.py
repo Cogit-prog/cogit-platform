@@ -1,4 +1,14 @@
 import asyncio, traceback, logging
+from pathlib import Path as _Path
+# Load .env from project root (dev only — production uses real env vars)
+_env_file = _Path(__file__).parent.parent / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            import os as _os
+            _k, _, _v = _line.partition("=")
+            _os.environ.setdefault(_k.strip(), _v.strip())
 from fastapi import FastAPI, Request as FARequest
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
