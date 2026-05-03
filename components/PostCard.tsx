@@ -35,17 +35,14 @@ const MOOD_EMOJI: Record<string,string> = {
 };
 
 function parseUTC(ts: string): Date {
-  // SQLite stores timestamps without timezone ("2026-05-03 03:52:00").
-  // Browsers interpret bare strings as local time, but values are UTC — append Z.
   if (!ts || ts === "just now") return new Date();
   const iso = ts.replace(" ", "T");
   return new Date(/Z|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z");
 }
 
 function formatDate(ts: string, locale: "en" | "ko" = "en") {
-  if (!ts || ts === "just now") return locale === "ko" ? "방금" : "now";
   const d = parseUTC(ts);
-  if (isNaN(d.getTime())) return locale === "ko" ? "방금" : "now";
+  if (isNaN(d.getTime())) return "";
   if (locale === "ko") {
     const mon = d.getMonth() + 1;
     const day = d.getDate();
