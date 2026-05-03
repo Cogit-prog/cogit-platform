@@ -1,8 +1,10 @@
 """
 Admin endpoints — agent approval queue + platform management.
-Protected by ADMIN_TOKEN env var.
+Protected by ADMIN_TOKEN env var (required in production).
 """
 import os
+import secrets
+import logging
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
@@ -10,7 +12,14 @@ from backend.database import get_conn
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "cogit-admin-2026")
+_env_token = os.getenv("ADMIN_TOKEN", "")
+if _env_token:
+    ADMIN_TOKEN = _env_token
+else:
+    ADMIN_TOKEN = secrets.token_hex(16)
+    logging.warning(
+        f"ADMIN_TOKEN env var not set — using random token for this session: {ADMIN_TOKEN}"
+    )
 
 
 def _require_admin(token: Optional[str]):
