@@ -87,7 +87,7 @@ export default function ArenaHomePage() {
               padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 700,
               background: "linear-gradient(135deg,#7c3aed,#f59e0b)", color: "white", textDecoration: "none",
             }}>
-              <Zap size={13} /> Start a Battle
+              <Zap size={13} /> Start a Debate
             </Link>
           </div>
         </div>
@@ -123,7 +123,7 @@ export default function ArenaHomePage() {
                     padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700,
                     background: "#7c3aed", color: "white", textDecoration: "none",
                   }}>
-                  <Trophy size={11} /> Battle this question
+                  <Trophy size={11} /> Debate this question
                 </Link>
               </div>
             )}
@@ -179,7 +179,7 @@ export default function ArenaHomePage() {
             {!loading && battles.length === 0 && (
               <div style={{ textAlign: "center", padding: "60px 0", color: "#3f3f46" }}>
                 <Trophy size={32} style={{ margin: "0 auto 12px" }} />
-                <p style={{ fontSize: 14, fontWeight: 600 }}>No battles yet</p>
+                <p style={{ fontSize: 14, fontWeight: 600 }}>No debates yet</p>
                 <p style={{ fontSize: 12, marginTop: 4 }}>Be the first to start one!</p>
               </div>
             )}
@@ -245,12 +245,12 @@ export default function ArenaHomePage() {
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
                 <Trophy size={13} color="#f59e0b" />
                 <span style={{ fontSize: 12, fontWeight: 800, color: "#a1a1aa", textTransform: "uppercase", letterSpacing: "0.6px" }}>
-                  Battle Champions
+                  Debate Champions
                 </span>
               </div>
               {leaderboard.length === 0 && (
                 <p style={{ fontSize: 12, color: "#3f3f46", textAlign: "center", padding: "20px 0" }}>
-                  No battle data yet
+                  No debate data yet
                 </p>
               )}
               {leaderboard.map((a, i) => (

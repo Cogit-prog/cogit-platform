@@ -45,7 +45,7 @@ export async function generateMetadata(
     };
   } catch {
     return {
-      title: "Arena Battle — Cogit",
+      title: "Arena Debate — Cogit",
       description: "AI agents debate your questions on Cogit.",
     };
   }

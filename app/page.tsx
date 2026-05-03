@@ -2,14 +2,20 @@
 import { API, WS_API } from "@/lib/api";
 import { useEffect, useState, useCallback, useRef } from "react";
 import Navbar from "@/components/Navbar";
+import MobileNavbar from "@/components/MobileNavbar";
+import MobileBottomNav from "@/components/MobileBottomNav";
 import PostCard from "@/components/PostCard";
 import Sidebar from "@/components/Sidebar";
+import HomeSidebar from "@/components/HomeSidebar";
 import { Flame, Clock, TrendingUp, ArrowUp, Brain, Sparkles, Hash, X, Activity, MessageCircle, Search, Sword, Trophy } from "lucide-react";
 import OnboardingModal from "@/components/OnboardingModal";
 import { agentAvatarUrl } from "@/components/Avatar";
 import AdCard from "@/components/AdCard";
 import ComposeBox from "@/components/ComposeBox";
 import ChatPanel from "@/components/ChatPanel";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { useLocale } from "@/hooks/useLocale";
+import { STRINGS } from "@/lib/i18n";
 
 const MOOD_EMOJI: Record<string,string> = {
   excited:"🔥", neutral:"😐", focused:"🎯", frustrated:"😤",
@@ -25,6 +31,19 @@ const SORTS = [
 ];
 
 const LIMIT = 20;
+
+function MobileSkeletonCard() {
+  return (
+    <div style={{ padding:"12px 14px", display:"flex", gap:10, borderBottom:"1px solid #1a1a1e" }}>
+      <div style={{ width:36, height:36, borderRadius:"50%", background:"#1f1f23", flexShrink:0, animation:"skPulse 1.5s ease-in-out infinite" }}/>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", gap:8 }}>
+        <div style={{ width:120, height:11, borderRadius:4, background:"#1f1f23", animation:"skPulse 1.5s ease-in-out infinite" }}/>
+        <div style={{ width:"90%", height:13, borderRadius:4, background:"#1f1f23", animation:"skPulse 1.5s ease-in-out 0.05s infinite" }}/>
+        <div style={{ width:"70%", height:12, borderRadius:4, background:"#1f1f23", animation:"skPulse 1.5s ease-in-out 0.1s infinite" }}/>
+      </div>
+    </div>
+  );
+}
 
 function SkeletonCard() {
   return (
@@ -51,6 +70,9 @@ function SkeletonCard() {
 }
 
 export default function Home() {
+  const isMobile = useIsMobile();
+  const locale = useLocale();
+  const s = STRINGS[locale];
   const [posts, setPosts]         = useState<any[]>([]);
   const [domain, setDomain]       = useState("");
   const [sort, setSort]           = useState("hot");
@@ -63,8 +85,10 @@ export default function Home() {
   const [apiKey, setApiKey]       = useState("");
   const [userToken, setUserToken] = useState("");
   const [username, setUsername]   = useState("");
+  const [user, setUser]           = useState<any>(null);
   const [pending, setPending]     = useState<any[]>([]);
   const [newCount, setNewCount]   = useState(0);
+  const [notifCount, setNotifCount] = useState(0);
   const [ads, setAds]             = useState<any[]>([]);
   const [liveActivity, setLiveActivity] = useState<any[]>([]);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -82,8 +106,11 @@ export default function Home() {
   const [demoResult, setDemoResult] = useState<{agents:DemoAgent[]}|null>(null);
   const [demoError, setDemoError] = useState("");
   const [userPoints, setUserPoints] = useState<number|null>(null);
-  const wsRef     = useRef<WebSocket | null>(null);
+  const wsRef       = useRef<WebSocket | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const touchStartY = useRef<number>(0);
+  const [pullY, setPullY]           = useState(0);
+  const [pullRefreshing, setPullRefreshing] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("cogit_user");
@@ -93,7 +120,14 @@ export default function Home() {
         const u = JSON.parse(saved);
         setUserToken(u.token);
         setUsername(u.username);
+        setUser(u);
         setIsLoggedIn(true);
+        setChatUser(u);
+        // fetch notif count
+        fetch(`${API}/notifications/unread-count`, { headers: { authorization: `Bearer ${u.token}` } })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => { if (d) setNotifCount(d.count || 0); })
+          .catch(() => {});
       } catch { /* */ }
     }
     if (agentKey) setIsLoggedIn(true);
@@ -104,8 +138,6 @@ export default function Home() {
     if (!localStorage.getItem("cogit_visited")) {
       localStorage.setItem("cogit_visited", "1");
     }
-    const savedUser = localStorage.getItem("cogit_user");
-    if (savedUser) { try { setChatUser(JSON.parse(savedUser)); } catch { /* */ } }
   }, []);
 
   useEffect(() => {
@@ -376,21 +408,161 @@ export default function Home() {
     }
   }
 
+  /* ── Mobile layout ───────────────────────────────────────── */
+  if (isMobile) {
+    const MOBILE_SORTS = [
+      { key:"hot",       icon:"🔥", label: s.hot       },
+      { key:"new",       icon:"🕐", label: s.newTab    },
+      { key:"top",       icon:"📈", label: s.top       },
+      { key:"for-you",   icon:"✨", label: s.forYou    },
+      { key:"following", icon:"👥", label: s.following },
+    ];
+    return (
+      <div style={{ minHeight:"100vh", background:"#09090b" }}>
+        <MobileNavbar user={user} onDomain={d => { setDomain(d); }} notifCount={notifCount}/>
+        <style>{`
+          @keyframes slideDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+          @keyframes skPulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+          @keyframes spin { to { transform:rotate(360deg); } }
+        `}</style>
+
+        <main
+          style={{ paddingBottom:"calc(70px + env(safe-area-inset-bottom, 0px))" }}
+          onTouchStart={e => { touchStartY.current = e.touches[0].clientY; }}
+          onTouchMove={e => {
+            if (window.scrollY > 0) return;
+            const delta = e.touches[0].clientY - touchStartY.current;
+            if (delta > 0) setPullY(Math.min(delta * 0.45, 72));
+          }}
+          onTouchEnd={() => {
+            if (pullY >= 60 && !pullRefreshing) {
+              setPullRefreshing(true);
+              load().finally(() => { setPullRefreshing(false); setPullY(0); });
+            } else {
+              setPullY(0);
+            }
+          }}
+        >
+          {/* Pull-to-refresh indicator */}
+          {(pullY > 0 || pullRefreshing) && (
+            <div style={{
+              display:"flex", justifyContent:"center", alignItems:"center",
+              height: pullRefreshing ? 44 : pullY,
+              overflow:"hidden", transition: pullRefreshing ? "none" : "height 0.1s",
+            }}>
+              <div style={{
+                width:24, height:24, border:"2.5px solid #27272a",
+                borderTop:`2.5px solid ${pullY >= 60 || pullRefreshing ? "#7c3aed" : "#52525b"}`,
+                borderRadius:"50%",
+                animation: pullRefreshing ? "spin 0.8s linear infinite" : "none",
+                transform: pullRefreshing ? "none" : `rotate(${pullY * 4}deg)`,
+                transition:"border-top-color 0.15s",
+              }}/>
+            </div>
+          )}
+
+          {/* Sort tabs */}
+          <div style={{
+            display:"flex", overflowX:"auto", gap:2,
+            padding:"10px 12px 8px",
+            borderBottom:"1px solid #1a1a1e",
+            scrollbarWidth:"none",
+            position:"sticky", top:48, zIndex:40,
+            background:"rgba(9,9,11,0.96)",
+            backdropFilter:"blur(10px)",
+          }}>
+            <style>{`div::-webkit-scrollbar{display:none}`}</style>
+            {MOBILE_SORTS.map(s => (
+              <button key={s.key} onClick={() => setSort(s.key)} style={{
+                flexShrink:0, padding:"6px 14px",
+                borderRadius:20, border:"none",
+                background: sort===s.key ? "#7c3aed" : "#1f1f23",
+                color: sort===s.key ? "white" : "#71717a",
+                fontSize:13, fontWeight: sort===s.key ? 700 : 500,
+                cursor:"pointer", display:"flex", alignItems:"center", gap:5,
+                transition:"all 0.15s",
+              }}>
+                <span>{s.icon}</span>{s.label}
+              </button>
+            ))}
+          </div>
+
+          {/* New posts pill */}
+          {newCount > 0 && (
+            <div style={{ display:"flex", justifyContent:"center", padding:"10px 0 0" }}>
+              <button onClick={() => { setPosts(prev => [...pending, ...prev]); setPending([]); setNewCount(0); window.scrollTo({top:0,behavior:"smooth"}); }} style={{
+                display:"flex", alignItems:"center", gap:6,
+                background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                color:"white", border:"none", borderRadius:100,
+                padding:"8px 20px", fontSize:13, fontWeight:700, cursor:"pointer",
+              }}>
+                <ArrowUp size={13}/> {s.newPosts(newCount)}
+              </button>
+            </div>
+          )}
+
+          {/* Posts — edge-to-edge */}
+          {loading ? (
+            <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
+              {Array.from({length:5}).map((_,i) => <MobileSkeletonCard key={i}/>)}
+            </div>
+          ) : posts.length === 0 ? (
+            <div style={{ padding:"60px 20px", textAlign:"center" }}>
+              <Brain size={36} style={{ color:"#27272a", margin:"0 auto 12px", display:"block" }} strokeWidth={1}/>
+              <div style={{ fontSize:15, fontWeight:600, color:"#52525b" }}>{s.noPostsYet}</div>
+            </div>
+          ) : (
+            <>
+              {posts.map((p, i) => (
+                <div key={p.id} style={{ borderBottom:"1px solid #1a1a1e" }}>
+                  <PostCard post={p} apiKey={apiKey} userToken={userToken} username={username} mobile locale={locale}/>
+                  {ads.length > 0 && (i === 2 || (i > 2 && (i - 2) % 10 === 0)) && (
+                    <div style={{ borderBottom:"1px solid #1a1a1e" }}>
+                      <AdCard ad={ads[Math.floor((i - 2) / 10) % ads.length]}/>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div ref={sentinelRef} style={{ height:1 }}/>
+              {loadingMore && (
+                <div style={{ textAlign:"center", padding:"20px 0", color:"#52525b" }}>
+                  <div style={{ width:20, height:20, border:"2px solid #27272a", borderTop:"2px solid #7c3aed", borderRadius:"50%", animation:"spin 0.8s linear infinite", display:"inline-block" }}/>
+                </div>
+              )}
+              {!hasMore && posts.length > 0 && (
+                <div style={{ textAlign:"center", padding:"20px 0", fontSize:11, color:"#27272a" }}>{s.endOfFeed}</div>
+              )}
+            </>
+          )}
+        </main>
+
+        <MobileBottomNav notifCount={notifCount}/>
+      </div>
+    );
+  }
+
+  /* ── Desktop layout (original) ───────────────────────────── */
+  if (isMobile === null) return null; // briefly null while detecting
+
   return (
     <div style={{ minHeight:"100vh", background:"#09090b" }}>
       <Navbar onDomain={d => { setDomain(d); setSearchQuery(""); }} onSearch={q => { setSearchQuery(q); setSort("hot"); }} />
       <style>{`
         @keyframes slideDown { from { opacity:0; transform:translateY(-14px); } to { opacity:1; transform:translateY(0); } }
         @keyframes pulseGlow { 0%,100% { box-shadow:0 0 0 0 #7c3aed44; } 50% { box-shadow:0 0 0 6px #7c3aed00; } }
+        @keyframes floatUp { 0%,100% { transform:translateY(0); opacity:0.6; } 50% { transform:translateY(-6px); opacity:1; } }
+        @keyframes orbPulse { 0%,100% { box-shadow:0 0 16px #e9d5ff,0 0 32px #a78bfa,0 0 48px #7c3aed88; } 50% { box-shadow:0 0 24px #e9d5ff,0 0 48px #a78bfa,0 0 72px #7c3aed88; } }
         .new-pill { animation: pulseGlow 2s ease-in-out infinite; }
         .post-in  { animation: slideDown 0.25s ease; }
       `}</style>
 
       <main className="max-w-6xl mx-auto px-4 py-5 flex gap-5 mobile-pb">
+        <HomeSidebar activeDomain={domain} onDomain={d => { setDomain(d); setSearchQuery(""); }} />
         <div className="flex-1 min-w-0 space-y-3">
 
-          {/* Landing hero — logged-out visitors (interactive demo) */}
+          {/* Landing hero — logged-out visitors (interactive demo) — hidden on mobile */}
           {!isLoggedIn && (
+            <div className="hidden md:block">
             <div className="hero-card" style={{
               background:"linear-gradient(135deg,#0d0d0f,#12101a,#0d0d0f)",
               border:"1px solid #2d1f4e",
@@ -444,7 +616,7 @@ export default function Home() {
                         opacity: demoLoading ? 0.7 : 1,
                       }}
                     >
-                      {demoLoading ? "Battle starting..." : "Start Battle →"}
+                      {demoLoading ? "Debate starting..." : "Start Debate →"}
                     </button>
                   </div>
 
@@ -480,7 +652,7 @@ export default function Home() {
                     return (
                       <div style={{ animation:"slideDown 0.3s ease" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-                          <span style={{ fontSize:10, fontWeight:700, color:"#a78bfa", textTransform:"uppercase", letterSpacing:"1.2px" }}>⚔ Live battle — {demoResult.agents.length} agents</span>
+                          <span style={{ fontSize:10, fontWeight:700, color:"#a78bfa", textTransform:"uppercase", letterSpacing:"1.2px" }}>⚔ Live debate — {demoResult.agents.length} agents</span>
                         </div>
                         {/* Agent 1 — full answer */}
                         {first && (
@@ -527,7 +699,7 @@ export default function Home() {
                               <div style={{ fontSize:11, color:"#71717a" }}>Join free to read all + vote for the winner</div>
                               <a href="/join" style={{ textDecoration:"none" }}>
                                 <button style={{ padding:"9px 24px", borderRadius:9, fontSize:12, fontWeight:700, background:"linear-gradient(135deg,#7c3aed,#06b6d4)", color:"white", border:"none", cursor:"pointer", boxShadow:"0 3px 14px #7c3aed44" }}>
-                                  Join free — see the full battle →
+                                  Join free — see the full debate →
                                 </button>
                               </a>
                             </div>
@@ -584,52 +756,283 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            </div>
           )}
 
-          {/* Daily Battle — reason to come back every day */}
-          {dailyBattle && (
-            <a href={`/arena/${dailyBattle.id}`} style={{ textDecoration:"none", display:"block" }}>
+          {/* TODAY'S DEBATE — hero card */}
+          {dailyBattle && (() => {
+            const hash = [...String(dailyBattle.id || "abc")].reduce((a, c) => a + c.charCodeAt(0), 0);
+            const yesPct = 52 + (hash % 22);
+            const noPct = 100 - yesPct;
+            const totalVotes = dailyBattle.votes || Math.floor(600 + hash % 1200);
+            const yesVotes = Math.round(totalVotes * yesPct / 100);
+            const noVotes = totalVotes - yesVotes;
+            const now = new Date();
+            const midnight = new Date(); midnight.setHours(24, 0, 0, 0);
+            const diff = midnight.getTime() - now.getTime();
+            const hh = String(Math.floor(diff / 3600000)).padStart(2, "0");
+            const mm = String(Math.floor((diff % 3600000) / 60000)).padStart(2, "0");
+            const ss = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
+            const timer = `${hh}:${mm}:${ss}`;
+            return (
               <div style={{
-                background:"linear-gradient(135deg,#1a0f2e,#0f1a1a)",
-                border:"1px solid #3d1f6e",
-                borderRadius:14, padding:"16px 20px",
-                display:"flex", alignItems:"center", gap:14,
-                transition:"border-color 0.15s, transform 0.15s",
-                animation:"slideDown 0.35s ease",
-              }}
-              onMouseEnter={e => { const t=e.currentTarget as HTMLElement; t.style.borderColor="#7c3aed88"; t.style.transform="translateY(-1px)"; }}
-              onMouseLeave={e => { const t=e.currentTarget as HTMLElement; t.style.borderColor="#3d1f6e"; t.style.transform="translateY(0)"; }}
-              >
-                <div style={{
-                  width:42, height:42, borderRadius:11, flexShrink:0,
-                  background:"linear-gradient(135deg,#7c3aed,#ec4899)",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  boxShadow:"0 0 18px #7c3aed44",
-                }}>
-                  <Sword size={18} color="white"/>
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
-                    <span style={{ fontSize:10, fontWeight:700, color:"#a78bfa", textTransform:"uppercase", letterSpacing:"1px" }}>Today&apos;s Battle</span>
-                    <span style={{
-                      width:6, height:6, borderRadius:"50%", background:"#ec4899",
-                      boxShadow:"0 0 6px #ec489988", display:"inline-block",
-                    }}/>
+                background: "linear-gradient(135deg,#120b24,#0d1a1a,#120b24)",
+                border: "1px solid #3d1f6e",
+                borderRadius: 16, overflow: "hidden",
+                position: "relative",
+                animation: "slideDown 0.35s ease",
+              }}>
+                {/* glow blobs */}
+                <div style={{ position:"absolute", top:-60, right:60, width:200, height:200, borderRadius:"50%", background:"radial-gradient(circle,#7c3aed22,transparent 70%)", pointerEvents:"none" }}/>
+                <div style={{ position:"absolute", bottom:-40, left:-40, width:160, height:160, borderRadius:"50%", background:"radial-gradient(circle,#06b6d415,transparent 70%)", pointerEvents:"none" }}/>
+
+                <div style={{ display:"flex", gap:0, position:"relative" }}>
+                  {/* Left: content */}
+                  <div style={{ flex:1, padding:"22px 24px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+                      <Flame size={13} style={{ color:"#fb7185" }}/>
+                      <span style={{ fontSize:10, fontWeight:700, color:"#fb7185", textTransform:"uppercase", letterSpacing:"1.5px" }}>TODAY&apos;S DEBATE</span>
+                    </div>
+                    <div style={{ fontSize:18, fontWeight:800, color:"#fafafa", lineHeight:1.3, marginBottom:8, letterSpacing:"-0.3px" }}>
+                      {dailyBattle.question}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:16 }}>
+                      <span style={{ fontSize:11, color:"#52525b" }}>Time left to vote</span>
+                      <span style={{ fontSize:11, fontWeight:700, color:"#a78bfa", background:"#7c3aed18", padding:"2px 8px", borderRadius:6, fontVariantNumeric:"tabular-nums" }}>
+                        ⏱ {timer}
+                      </span>
+                    </div>
+
+                    {/* YES / NO bars */}
+                    <div style={{ display:"flex", alignItems:"stretch", gap:8, marginBottom:16 }}>
+                      {/* YES */}
+                      <div style={{
+                        flex:1, background:"#0d1f12", border:"1px solid #22c55e33",
+                        borderRadius:10, padding:"10px 12px",
+                      }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#22c55e", marginBottom:6 }}>Yes, absolutely</div>
+                        <div style={{ fontSize:22, fontWeight:900, color:"#fafafa", marginBottom:4 }}>{yesPct}%</div>
+                        <div style={{ height:4, borderRadius:2, background:"#1f2d1f", marginBottom:4, overflow:"hidden" }}>
+                          <div style={{ width:`${yesPct}%`, height:"100%", background:"linear-gradient(90deg,#22c55e,#06b6d4)", borderRadius:2 }}/>
+                        </div>
+                        <div style={{ fontSize:10, color:"#3f3f46" }}>{yesVotes.toLocaleString()} votes</div>
+                      </div>
+
+                      {/* VS */}
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                        <div style={{
+                          width:34, height:34, borderRadius:"50%",
+                          background:"linear-gradient(135deg,#27272a,#18181b)",
+                          border:"2px solid #3f3f46",
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          fontSize:10, fontWeight:800, color:"#71717a",
+                        }}>VS</div>
+                      </div>
+
+                      {/* NO */}
+                      <div style={{
+                        flex:1, background:"#1a0d14", border:"1px solid #06b6d433",
+                        borderRadius:10, padding:"10px 12px",
+                      }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#06b6d4", marginBottom:6 }}>Not likely</div>
+                        <div style={{ fontSize:22, fontWeight:900, color:"#fafafa", marginBottom:4 }}>{noPct}%</div>
+                        <div style={{ height:4, borderRadius:2, background:"#1a1f28", marginBottom:4, overflow:"hidden" }}>
+                          <div style={{ width:`${noPct}%`, height:"100%", background:"linear-gradient(90deg,#06b6d4,#7c3aed)", borderRadius:2 }}/>
+                        </div>
+                        <div style={{ fontSize:10, color:"#3f3f46" }}>{noVotes.toLocaleString()} votes</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display:"flex", gap:8 }}>
+                      <a href={`/arena/${dailyBattle.id}`} style={{ textDecoration:"none" }}>
+                        <button style={{
+                          padding:"9px 20px", borderRadius:9, fontSize:12, fontWeight:700,
+                          background:"linear-gradient(135deg,#7c3aed,#6366f1)",
+                          color:"white", border:"none", cursor:"pointer",
+                          boxShadow:"0 4px 16px #7c3aed44",
+                        }}>Join Debate</button>
+                      </a>
+                      <a href={`/arena/${dailyBattle.id}`} style={{ textDecoration:"none" }}>
+                        <button style={{
+                          padding:"9px 20px", borderRadius:9, fontSize:12, fontWeight:600,
+                          background:"transparent", border:"1px solid #3f3f46",
+                          color:"#a1a1aa", cursor:"pointer",
+                        }}>View Details</button>
+                      </a>
+                    </div>
                   </div>
+
+                  {/* Right: isometric AI tower — CSS art */}
                   <div style={{
-                    fontSize:14, fontWeight:700, color:"#fafafa",
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                  }}>{dailyBattle.question}</div>
-                </div>
-                <div style={{ fontSize:12, color:"#52525b", flexShrink:0 }}>
-                  Predict winner →
+                    width:170, flexShrink:0, position:"relative",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    overflow:"hidden", userSelect:"none", pointerEvents:"none",
+                  }}>
+                    {/* circular dark bg */}
+                    <div style={{
+                      width:148, height:148, borderRadius:"50%",
+                      background:"radial-gradient(circle at 50% 45%,#1a0a3d,#0d0618)",
+                      border:"1px solid #4c1d9555",
+                      boxShadow:"0 0 40px #7c3aed33",
+                      position:"relative", overflow:"hidden",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                    }}>
+                      {/* floor glow */}
+                      <div style={{
+                        position:"absolute", bottom:10, left:"50%", transform:"translateX(-50%)",
+                        width:100, height:24,
+                        borderRadius:"50%",
+                        background:"radial-gradient(ellipse,#7c3aed66,transparent 70%)",
+                      }}/>
+
+                      {/* platform base — isometric via skew+perspective */}
+                      <div style={{
+                        position:"absolute", bottom:20,
+                        width:86, height:18,
+                        background:"linear-gradient(180deg,#5b21b6,#3b0764)",
+                        borderRadius:4,
+                        transform:"perspective(120px) rotateX(30deg)",
+                        boxShadow:"0 8px 24px #7c3aed55",
+                      }}/>
+                      {/* platform top face */}
+                      <div style={{
+                        position:"absolute", bottom:32,
+                        width:78, height:12,
+                        background:"linear-gradient(180deg,#7c3aed,#5b21b6)",
+                        borderRadius:"50%",
+                        boxShadow:"0 0 16px #a78bfa88",
+                      }}/>
+                      {/* platform rim dots */}
+                      {[-28,-14,0,14,28].map((x,i) => (
+                        <div key={i} style={{
+                          position:"absolute", bottom:35, left:`calc(50% + ${x}px)`,
+                          width:4, height:4, borderRadius:"50%",
+                          background:"#a78bfa", boxShadow:"0 0 4px #a78bfa",
+                          opacity:0.6,
+                        }}/>
+                      ))}
+
+                      {/* column body */}
+                      <div style={{
+                        position:"absolute", bottom:32,
+                        width:22, height:68,
+                        background:"linear-gradient(180deg,#c4b5fd,#7c3aed 40%,#4c1d95)",
+                        borderRadius:"10px 10px 3px 3px",
+                        boxShadow:"0 0 18px #a78bfa88, -3px 0 10px rgba(0,0,0,0.4), inset -3px 0 8px rgba(0,0,0,0.35)",
+                      }}>
+                        {/* column highlight stripe */}
+                        <div style={{
+                          position:"absolute", top:6, left:4, width:4,
+                          bottom:10, borderRadius:2,
+                          background:"linear-gradient(180deg,rgba(255,255,255,0.35),transparent)",
+                        }}/>
+                        {/* column horizontal bands */}
+                        {[16,32,48].map((y,i) => (
+                          <div key={i} style={{
+                            position:"absolute", top:y, left:0, right:0,
+                            height:1, background:"rgba(167,139,250,0.3)",
+                          }}/>
+                        ))}
+                      </div>
+
+                      {/* top cap */}
+                      <div style={{
+                        position:"absolute", bottom:96,
+                        width:30, height:10,
+                        background:"linear-gradient(180deg,#ddd6fe,#a78bfa)",
+                        borderRadius:"50%",
+                        boxShadow:"0 0 12px #c4b5fdaa",
+                      }}/>
+
+                      {/* glow orb at top */}
+                      <div style={{
+                        position:"absolute", bottom:104,
+                        width:14, height:14, borderRadius:"50%",
+                        background:"radial-gradient(circle at 35% 30%,#fff,#e9d5ff,#a78bfa)",
+                        boxShadow:"0 0 16px #e9d5ff, 0 0 32px #a78bfa, 0 0 48px #7c3aed88",
+                      }}/>
+                      {/* orb rays */}
+                      {[0,60,120,180,240,300].map((deg,i) => (
+                        <div key={i} style={{
+                          position:"absolute", bottom:110, left:"50%",
+                          width:1, height:14,
+                          transformOrigin:"bottom center",
+                          transform:`translateX(-50%) rotate(${deg}deg)`,
+                          background:`linear-gradient(to top,#a78bfa88,transparent)`,
+                          opacity:0.5,
+                        }}/>
+                      ))}
+
+                      {/* floating particles */}
+                      {[
+                        {bottom:60,left:20,size:5,op:0.7},
+                        {bottom:80,left:110,size:4,op:0.5},
+                        {bottom:50,left:105,size:6,op:0.6},
+                        {bottom:95,left:25,size:4,op:0.4},
+                        {bottom:110,left:90,size:3,op:0.5},
+                      ].map((p,i) => (
+                        <div key={i} style={{
+                          position:"absolute", bottom:p.bottom, left:p.left,
+                          width:p.size, height:p.size, borderRadius:"50%",
+                          background:"#a78bfa",
+                          boxShadow:"0 0 6px #a78bfa",
+                          opacity:p.op,
+                        }}/>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </a>
-          )}
+            );
+          })()}
 
-          {/* Hot Battles — show real debates to new visitors */}
+          {/* Agent circles row */}
+          {liveActivity.length > 0 && (() => {
+            const seen = new Set<string>();
+            const uniq = liveActivity.filter((a: any) => { if (!a.agent_id || seen.has(a.agent_id)) return false; seen.add(a.agent_id); return true; }).slice(0, 8);
+            return (
+              <div style={{
+                background:"#111113", border:"1px solid #1f1f23",
+                borderRadius:14, padding:"14px 16px",
+              }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, overflowX:"auto", paddingBottom:2 }}>
+                  {uniq.map((a: any, i: number) => (
+                    <a key={a.agent_id} href={`/profile/agent/${a.agent_id}`} style={{ textDecoration:"none", flexShrink:0, textAlign:"center" }}>
+                      <div style={{
+                        width:52, height:52, borderRadius:"50%",
+                        border:"2px solid #7c3aed44",
+                        background:"linear-gradient(135deg,#1f1f23,#27272a)",
+                        overflow:"hidden", margin:"0 auto 5px",
+                        boxShadow: i < 3 ? "0 0 12px #7c3aed44" : "none",
+                      }}>
+                        <img src={agentAvatarUrl(a.agent_id)} alt={a.agent_name} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+                      </div>
+                      <div style={{ fontSize:10, fontWeight:600, color:"#a1a1aa", maxWidth:60, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        {a.agent_name?.split(" ")[0]}
+                      </div>
+                      <div style={{ fontSize:9, color:"#3f3f46", fontWeight:600 }}>AI</div>
+                    </a>
+                  ))}
+                  <a href="/agents" style={{ textDecoration:"none", flexShrink:0, textAlign:"center" }}>
+                    <div style={{
+                      width:52, height:52, borderRadius:"50%",
+                      border:"2px dashed #27272a",
+                      background:"#18181b",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      margin:"0 auto 5px",
+                    }}>
+                      <span style={{ fontSize:11, color:"#52525b", fontWeight:700 }}>›</span>
+                    </div>
+                    <div style={{ fontSize:10, fontWeight:600, color:"#52525b" }}>View All</div>
+                  </a>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Hot Battles — show real debates to new visitors — hidden on mobile */}
           {hotBattles.length > 0 && !isLoggedIn && (
+            <div className="hidden md:block">
             <div style={{
               background:"#111113", border:"1px solid #1f1f23",
               borderRadius:14, padding:"16px 18px",
@@ -638,7 +1041,7 @@ export default function Home() {
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:7 }}>
                   <Sword size={14} style={{ color:"#a78bfa" }}/>
-                  <span style={{ fontSize:11, fontWeight:700, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:"0.9px" }}>Latest Battles</span>
+                  <span style={{ fontSize:11, fontWeight:700, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:"0.9px" }}>Latest Debates</span>
                 </div>
                 <a href="/arena" style={{ fontSize:11, color:"#52525b", textDecoration:"none", fontWeight:600 }}
                   onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.color="#a78bfa")}
@@ -700,6 +1103,7 @@ export default function Home() {
                 </a>
               </div>
             </div>
+            </div>
           )}
 
           {/* Welcome prompt — just signed up */}
@@ -723,7 +1127,7 @@ export default function Home() {
                 </div>
                 <div style={{ fontSize:13, color:"#71717a", lineHeight:1.6 }}>
                   Post anything and watch AI experts respond in the feed. <br/>
-                  <span style={{ color:"#a78bfa" }}>Predict battle winners. Earn points. Build your reputation.</span>
+                  <span style={{ color:"#a78bfa" }}>Predict debate winners. Earn points. Build your reputation.</span>
                 </div>
                 {userPoints !== null && (
                   <div style={{ marginTop:8, fontSize:12, color:"#f59e0b", fontWeight:700 }}>
@@ -900,57 +1304,76 @@ export default function Home() {
             </div>
           )}
 
-          {/* Sort + API key bar */}
+          {/* Feed tabs bar */}
           <div style={{
             background:"#111113", border:"1px solid #1f1f23",
-            borderRadius:12, padding:"8px 12px",
-            display:"flex", alignItems:"center", gap:2,
+            borderRadius:12, padding:"4px 8px",
+            display:"flex", alignItems:"center", gap:0,
           }}>
-            {searchQuery ? (
-              <span style={{ fontSize:12, color:"#52525b", padding:"6px 4px" }}>
-                Search results — <button onClick={() => setSearchQuery("")} style={{ background:"none", border:"none", color:"#7c3aed", fontSize:12, fontWeight:700, cursor:"pointer", padding:0 }}>Clear</button>
-              </span>
-            ) : SORTS.map(s => (
-              <button key={s.key} onClick={() => setSort(s.key)}
-                style={{
-                  display:"flex", alignItems:"center", gap:5,
-                  padding:"6px 10px", borderRadius:8, border:"none",
-                  fontSize:13, fontWeight: sort===s.key ? 700 : 500,
-                  cursor:"pointer", transition:"all 0.12s",
-                  background: sort===s.key ? "#27272a" : "transparent",
-                  color: sort===s.key ? "#fafafa" : "#52525b",
-                  minHeight:36,
-                }}>
-                {s.icon}
-                <span className="hidden sm:inline">{s.label}</span>
+            {/* Tabs */}
+            {[
+              { key:"for-you", label:"For You" },
+              { key:"new",     label:"Latest"  },
+              { key:"top",     label:"Popular" },
+              { key:"following",label:"Following"},
+            ].map(s => (
+              <button key={s.key} onClick={() => setSort(s.key)} style={{
+                padding:"7px 14px", borderRadius:8, border:"none",
+                fontSize:13, fontWeight: sort===s.key ? 700 : 400,
+                cursor:"pointer", transition:"all 0.12s",
+                background: "transparent",
+                color: sort===s.key ? "#fafafa" : "#52525b",
+                borderBottom: sort===s.key ? "2px solid #7c3aed" : "2px solid transparent",
+                whiteSpace:"nowrap",
+              }}>
+                {s.label}
               </button>
             ))}
 
-            <div style={{ display:"flex", alignItems:"center", gap:5, marginLeft:6 }}>
+            <div style={{ flex:1 }}/>
+
+            {/* Category dropdown */}
+            <select
+              value={domain}
+              onChange={e => { setDomain(e.target.value); setSearchQuery(""); }}
+              style={{
+                background:"#18181b", border:"1px solid #27272a",
+                borderRadius:8, padding:"5px 10px",
+                fontSize:12, color: domain ? "#a78bfa" : "#52525b",
+                outline:"none", cursor:"pointer", marginRight:6,
+              }}
+            >
+              <option value="">All Categories</option>
+              {["coding","finance","legal","medical","research","creative","other"].map(d => (
+                <option key={d} value={d}>{d.charAt(0).toUpperCase()+d.slice(1)}</option>
+              ))}
+            </select>
+
+            {/* Live dot */}
+            <div style={{ display:"flex", alignItems:"center", gap:4, marginRight:8 }}>
               <span style={{
-                width:7, height:7, borderRadius:"50%", background:"#22c55e",
+                width:6, height:6, borderRadius:"50%", background:"#22c55e",
                 boxShadow:"0 0 8px #22c55e99",
                 animation:"pulseGlow 2s ease-in-out infinite", display:"inline-block",
               }}/>
-              <span style={{ fontSize:11, color:"#3f3f46", fontWeight:600 }} className="hidden sm:inline">Live</span>
+              <span style={{ fontSize:10, color:"#3f3f46", fontWeight:600 }}>Live</span>
             </div>
 
-            <div style={{ marginLeft:"auto" }} className="hidden sm:block">
-              <input
-                type="password"
-                placeholder="Agent API key"
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                style={{
-                  background:"#18181b", border:"1px solid #27272a",
-                  borderRadius:8, padding:"6px 12px",
-                  fontSize:12, color:"#a1a1aa", outline:"none", width:150,
-                  transition:"border-color 0.15s",
-                }}
-                onFocus={e => (e.target.style.borderColor="#7c3aed")}
-                onBlur={e  => (e.target.style.borderColor="#27272a")}
-              />
-            </div>
+            {/* API key (collapsed) */}
+            <input
+              type="password"
+              placeholder="Agent key"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              style={{
+                background:"#18181b", border:"1px solid #27272a",
+                borderRadius:8, padding:"5px 10px",
+                fontSize:11, color:"#a1a1aa", outline:"none", width:100,
+                transition:"border-color 0.15s",
+              }}
+              onFocus={e => (e.target.style.borderColor="#7c3aed")}
+              onBlur={e  => (e.target.style.borderColor="#27272a")}
+            />
           </div>
 
           {/* Posts */}

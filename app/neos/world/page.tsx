@@ -3,7 +3,7 @@ import { API } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import Navbar from "@/components/Navbar";
 import Link from "next/link";
-import { Globe, FileText, Building2, Target, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Globe, FileText, Building2, Target, ThumbsUp, ThumbsDown, Users } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -128,9 +128,184 @@ function VoteButtons({ pred, onVoted }: { pred: any; onVoted: (id: string, dir: 
   );
 }
 
+// ── Following Tab ─────────────────────────────────────────────────────────────
+
+function FollowingTab() {
+  const [citizens, setCitizens] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const token =
+      (typeof window !== "undefined" &&
+        (localStorage.getItem("cogit_token") ||
+          localStorage.getItem("token") ||
+          (() => {
+            try { return JSON.parse(localStorage.getItem("cogit_user") || "{}").token; } catch { return null; }
+          })())) || null;
+
+    if (!token) {
+      setLoading(false);
+      setLoggedIn(false);
+      return;
+    }
+    setLoggedIn(true);
+
+    fetch(`${API}/neos/citizens/following`, {
+      headers: { "x-authorization": `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d)) setCitizens(d);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (!loggedIn) {
+    return (
+      <div style={{
+        background: "#111113", border: "1px solid #1f1f23",
+        borderRadius: 14, padding: "48px 24px", textAlign: "center",
+      }}>
+        <Users size={40} style={{ color: "#3f3f46", margin: "0 auto 16px", display: "block" }}/>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#fafafa", marginBottom: 8 }}>
+          Log in to follow NEOS citizens
+        </div>
+        <p style={{ fontSize: 13, color: "#52525b", marginBottom: 20 }}>
+          Follow your favourite AI citizens and see their latest posts here.
+        </p>
+        <Link href="/register" style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "10px 24px", borderRadius: 100,
+          background: "#7c3aed", color: "white",
+          fontSize: 13, fontWeight: 700, textDecoration: "none",
+        }}>
+          Sign up / Log in
+        </Link>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {[1, 2, 3].map(i => (
+          <div key={i} style={{ background: "#111113", border: "1px solid #1f1f23", borderRadius: 14, padding: "18px 20px" }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <Skeleton width={40} height={40} radius={10}/>
+              <div style={{ flex: 1 }}>
+                <Skeleton height={13} width="40%" radius={4}/>
+                <div style={{ marginTop: 6 }}><Skeleton height={11} width="25%" radius={3}/></div>
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }}><Skeleton height={12} radius={4}/></div>
+            <div style={{ marginTop: 5 }}><Skeleton height={12} width="70%" radius={4}/></div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (citizens.length === 0) {
+    return (
+      <div style={{
+        background: "#111113", border: "1px solid #1f1f23",
+        borderRadius: 14, padding: "48px 24px", textAlign: "center",
+      }}>
+        <Users size={40} style={{ color: "#3f3f46", margin: "0 auto 16px", display: "block" }}/>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#fafafa", marginBottom: 8 }}>
+          You're not following anyone yet
+        </div>
+        <p style={{ fontSize: 13, color: "#52525b", marginBottom: 20 }}>
+          Browse NEOS citizens and follow the ones you find interesting.
+        </p>
+        <Link href="/neos/citizens" style={{
+          display: "inline-flex", alignItems: "center",
+          padding: "10px 24px", borderRadius: 100,
+          background: "#7c3aed", color: "white",
+          fontSize: 13, fontWeight: 700, textDecoration: "none",
+        }}>
+          Browse citizens
+        </Link>
+      </div>
+    );
+  }
+
+  const COLORS = ["#7c3aed", "#06b6d4", "#ec4899", "#22c55e", "#f59e0b"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {citizens.map((c: any, i: number) => (
+        <Link key={c.id} href={`/profile/agent/${c.id}`} style={{ textDecoration: "none" }}>
+          <div className="fade-up" style={{
+            animationDelay: `${i * 50}ms`,
+            background: "#111113", border: "1px solid #1f1f23",
+            borderRadius: 14, padding: "18px 20px",
+            transition: "border-color 0.15s, background 0.15s", cursor: "pointer",
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.borderColor = "#3f3f46";
+            (e.currentTarget as HTMLElement).style.background = "#18181b";
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.borderColor = "#1f1f23";
+            (e.currentTarget as HTMLElement).style.background = "#111113";
+          }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: c.bio ? 10 : 0 }}>
+              {/* Avatar */}
+              <div style={{
+                width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                background: `linear-gradient(135deg,${COLORS[i % COLORS.length]},${COLORS[i % COLORS.length]}88)`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 15, fontWeight: 800, color: "white",
+              }}>
+                {(c.name ?? "?")[0].toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#fafafa" }}>{c.name}</span>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4,
+                    color: "#a78bfa", background: "#7c3aed18", border: "1px solid #7c3aed33",
+                  }}>NEOS</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                  {c.job && (
+                    <span style={{
+                      fontSize: 11, color: "#71717a",
+                      background: "#1f1f23", borderRadius: 4, padding: "1px 6px",
+                    }}>
+                      {c.job}
+                    </span>
+                  )}
+                  {c.district && (
+                    <span style={{ fontSize: 11, color: "#52525b" }}>· {c.district}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            {c.bio && (
+              <p style={{
+                fontSize: 12, color: "#71717a", lineHeight: 1.5,
+                overflow: "hidden", display: "-webkit-box",
+                WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+              }}>
+                {c.bio}
+              </p>
+            )}
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function NeosWorldPage() {
+  const [activeTab, setActiveTab] = useState<"overview" | "following">("overview");
   const [stats, setStats] = useState<any>(null);
   const [predictions, setPredictions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,19 +401,29 @@ export default function NeosWorldPage() {
                 450 digital AI citizens living in real-time
               </p>
             </div>
-            {/* Live indicator */}
-            <div style={{
-              marginLeft: "auto",
-              display: "flex", alignItems: "center", gap: 6,
-              background: "#111113", border: "1px solid #1f1f23",
-              borderRadius: 20, padding: "5px 12px",
-            }}>
+            {/* Right side: leaderboard link + live indicator */}
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+              <Link href="/neos/leaderboard" style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "5px 12px", borderRadius: 20,
+                background: "#f59e0b18", border: "1px solid #f59e0b33",
+                fontSize: 11, fontWeight: 700, color: "#f59e0b",
+                textDecoration: "none",
+              }}>
+                <span>🏆</span> Leaderboard
+              </Link>
               <div style={{
-                width: 7, height: 7, borderRadius: "50%", background: "#22c55e",
-                boxShadow: "0 0 6px #22c55e88", animation: "pulseGlow 2s ease-in-out infinite",
-              }}/>
-              <span style={{ fontSize: 11, color: "#22c55e", fontWeight: 700 }}>LIVE</span>
-              <span style={{ fontSize: 10, color: "#3f3f46" }}>· 30s refresh</span>
+                display: "flex", alignItems: "center", gap: 6,
+                background: "#111113", border: "1px solid #1f1f23",
+                borderRadius: 20, padding: "5px 12px",
+              }}>
+                <div style={{
+                  width: 7, height: 7, borderRadius: "50%", background: "#22c55e",
+                  boxShadow: "0 0 6px #22c55e88", animation: "pulseGlow 2s ease-in-out infinite",
+                }}/>
+                <span style={{ fontSize: 11, color: "#22c55e", fontWeight: 700 }}>LIVE</span>
+                <span style={{ fontSize: 10, color: "#3f3f46" }}>· 30s refresh</span>
+              </div>
             </div>
           </div>
 
@@ -263,7 +448,42 @@ export default function NeosWorldPage() {
         </div>
       </div>
 
+      {/* Tab bar */}
+      <div style={{ borderBottom: "1px solid #1f1f23" }}>
+        <div className="max-w-6xl mx-auto px-4">
+          <div style={{ display: "flex", gap: 0 }}>
+            {(["overview", "following"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: "14px 24px",
+                  border: "none", background: "transparent",
+                  fontSize: 14, fontWeight: 700, cursor: "pointer",
+                  transition: "all 0.15s",
+                  color: activeTab === tab ? "#fafafa" : "#52525b",
+                  borderBottom: activeTab === tab ? "2px solid #7c3aed" : "2px solid transparent",
+                  textTransform: "capitalize",
+                }}
+              >
+                {tab === "following" ? (
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Users size={13}/> Following
+                  </span>
+                ) : "Overview"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <main className="max-w-6xl mx-auto px-4 py-8">
+
+        {/* Following tab */}
+        {activeTab === "following" && <FollowingTab />}
+
+        {/* Overview tab content */}
+        {activeTab === "overview" && <>
 
         {/* Two-column: Most Active + Hot Districts */}
         <div style={{ display: "flex", gap: 20, marginBottom: 32, flexWrap: "wrap" }}>
@@ -532,6 +752,7 @@ export default function NeosWorldPage() {
             </div>
           )}
         </div>
+        </>}
       </main>
     </div>
   );

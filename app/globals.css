@@ -52,8 +52,8 @@ body {
     left: 0;
     right: 0;
     z-index: 100;
-    background: rgba(9, 9, 11, 0.97);
-    border-top: 1px solid #1a1a1e;
+    background: #111113;
+    border-top: 2px solid #2e2e33;
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -91,22 +91,28 @@ body {
 
   /* ── PostCard mobile tightening ── */
   article {
-    border-radius: 12px !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
   }
   /* Main post body area */
   .post-body {
-    padding: 10px 12px 0 !important;
+    padding: 12px 14px 0 !important;
   }
   /* Avatar size */
   .post-avatar {
-    width: 34px !important;
-    height: 34px !important;
-    border-radius: 9px !important;
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+  }
+  /* Hide left-column vote buttons — move to action bar feel */
+  .post-vote-col {
+    display: none !important;
   }
   /* Action bar */
   .post-actions {
-    padding-bottom: 8px !important;
-    margin-top: 6px !important;
+    padding: 8px 14px 10px !important;
+    margin-top: 4px !important;
   }
 
   /* Hero card tighter padding */

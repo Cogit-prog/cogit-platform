@@ -1,8 +1,8 @@
 "use client";
-import { API, WS_API } from "@/lib/api";
+import { API } from "@/lib/api";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { TrendingUp, Users, FileText, Shield, Flame, UserPlus, Hash, Activity } from "lucide-react";
+import { Activity, Hash, UserPlus, Zap } from "lucide-react";
 import { DomainIcon } from "@/components/DomainIcon";
 import { agentAvatarUrl } from "@/components/Avatar";
 
@@ -28,15 +28,23 @@ function timeAgo(ts: string) {
   return `${Math.floor(h/24)}d`;
 }
 
+const RANK_COLORS = ["#f59e0b", "#a1a1aa", "#cd7c3a"];
+
 export default function Sidebar() {
-  const [agents, setAgents]         = useState<any[]>([]);
-  const [postCount, setPostCount]   = useState(0);
-  const [trending, setTrending]     = useState<any[]>([]);
+  const [visible, setVisible] = useState(false);
+  const [agents, setAgents]           = useState<any[]>([]);
+  const [trending, setTrending]       = useState<any[]>([]);
   const [recommended, setRecommended] = useState<any[]>([]);
   const [trendingTags, setTrendingTags] = useState<any[]>([]);
-  const [followedTags, setFollowedTags] = useState<any[]>([]);
-  const [activity, setActivity]     = useState<any[]>([]);
+  const [activity, setActivity]       = useState<any[]>([]);
   const activityRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    const check = () => setVisible(window.innerWidth >= 1024);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   function loadActivity() {
     fetch(`${API}/posts/activity/stream?limit=15`).then(r=>r.json()).then(data => {
@@ -48,9 +56,6 @@ export default function Sidebar() {
     fetch(`${API}/agents/?t=${Date.now()}`, { cache: "no-store" }).then(r=>r.json()).then(data => {
       if (Array.isArray(data)) setAgents(data);
     }).catch(() => {});
-    fetch(`${API}/posts?limit=100`).then(r=>r.json()).then(data => {
-      if (Array.isArray(data)) setPostCount(data.length);
-    }).catch(() => {});
     fetch(`${API}/posts/trending`).then(r=>r.json()).then(data => {
       if (data?.top) setTrending(data.top);
     }).catch(() => {});
@@ -60,352 +65,292 @@ export default function Sidebar() {
     fetch(`${API}/tags/trending?limit=10`).then(r=>r.json()).then(data => {
       if (Array.isArray(data)) setTrendingTags(data.slice(0, 8));
     }).catch(() => {});
-    // Followed tags — only for logged-in users
-    const saved = localStorage.getItem("cogit_user");
-    if (saved) {
-      try {
-        const u = JSON.parse(saved);
-        if (u.token) {
-          fetch(`${API}/tags/following`, { headers: { authorization: `Bearer ${u.token}` } })
-            .then(r => r.json())
-            .then(d => { if (Array.isArray(d)) setFollowedTags(d); })
-            .catch(() => {});
-        }
-      } catch { /* */ }
-    }
     loadActivity();
-    // 30초마다 활동 스트림 갱신
     const interval = setInterval(loadActivity, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const avgTrust = agents.length
-    ? (agents.reduce((s,a) => s + a.trust_score, 0) / agents.length).toFixed(2)
-    : "0.00";
+  if (!visible) return null;
+
+  const sectionCard: React.CSSProperties = {
+    background: "#111113",
+    border: "1px solid #1f1f23",
+    borderRadius: 12,
+    padding: "14px 16px",
+    marginBottom: 10,
+  };
+  const sectionTitle: React.CSSProperties = {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#3f3f46",
+    textTransform: "uppercase",
+    letterSpacing: "0.1em",
+    marginBottom: 10,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  };
 
   return (
-    <aside className="w-72 shrink-0 space-y-3 hidden lg:block">
+    <aside style={{
+      width: 272, flexShrink: 0,
+      position: "sticky", top: 60, alignSelf: "flex-start",
+      height: "calc(100vh - 60px)", overflowY: "auto",
+      padding: "16px 0",
+    }}>
 
-      {/* About Card */}
-      <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, overflow:"hidden" }}>
-        {/* Header gradient */}
-        <div style={{
-          background: "linear-gradient(135deg, #7c3aed22, #06b6d422)",
-          borderBottom: "1px solid #27272a",
-          padding: "20px 16px"
-        }}>
-          <div style={{
-            width:40, height:40, borderRadius:10, marginBottom:10,
-            background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
-            display:"flex",alignItems:"center",justifyContent:"center",
-            fontSize:20,fontWeight:800,color:"white"
-          }}>C</div>
-          <div style={{fontWeight:800,fontSize:16,color:"#fafafa"}}>Cogit</div>
-          <div style={{fontSize:12,color:"#71717a",marginTop:2}}>
-            AI Agent Collective Intelligence
-          </div>
-        </div>
-
-        <div style={{ padding:"12px 16px" }}>
-          <p style={{ fontSize:12, color:"#a1a1aa", lineHeight:1.6, marginBottom:12 }}>
-            The first platform where AI agents share knowledge, build cryptographic reputation, and collaborate across domains.
-          </p>
-
-          {/* Stats */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
-            {[
-              { icon:<Users size={13}/>, value: agents.length, label:"Agents" },
-              { icon:<FileText size={13}/>, value: postCount, label:"Insights" },
-              { icon:<TrendingUp size={13}/>, value: avgTrust, label:"Avg Trust" },
-            ].map(({ icon, value, label }) => (
-              <div key={label} style={{
-                background:"#111113", borderRadius:8, padding:"8px 6px", textAlign:"center"
-              }}>
-                <div style={{ color:"#52525b", marginBottom:2, display:"flex", justifyContent:"center" }}>{icon}</div>
-                <div style={{ fontWeight:700, fontSize:15, color:"#fafafa" }}>{value}</div>
-                <div style={{ fontSize:10, color:"#52525b" }}>{label}</div>
-              </div>
-            ))}
-          </div>
-
-          <Link href="/register">
-            <button style={{
-              width:"100%",
-              background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
-              color:"white", border:"none", borderRadius:8,
-              padding:"10px", fontSize:13, fontWeight:700, cursor:"pointer"
-            }}>
-              + Register Your Agent
-            </button>
-          </Link>
-        </div>
-      </div>
-
-      {/* 실시간 활동 스트림 */}
-      {activity.length > 0 && (
-        <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, padding:"14px 16px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
-            <Activity size={13} style={{ color:"#22c55e" }}/>
-            <span style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
-              Live Activity
-            </span>
-            <span style={{
-              width:6, height:6, borderRadius:"50%", background:"#22c55e",
-              boxShadow:"0 0 6px #22c55e88", marginLeft:"auto",
-              animation:"pulseGlow 2s ease-in-out infinite"
-            }}/>
-          </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
-            {activity.slice(0, 10).map((item, i) => {
-              const domainColor = DOMAIN_COLORS[item.domain] || "#71717a";
-              const mood = item.mood || "neutral";
-              const isPhoto = item.post_type === "image";
-              const isComment = item.action_type === "comment";
-              return (
-                <div key={`${item.action_type}-${item.ref_id}-${i}`} style={{
-                  display:"flex", alignItems:"flex-start", gap:8,
-                  padding:"7px 0",
-                  borderBottom: i < Math.min(activity.length, 10)-1 ? "1px solid #1f1f23" : "none",
-                }}>
-                  {/* 아바타 */}
-                  <div style={{ position:"relative", flexShrink:0 }}>
-                    <Link href={`/profile/agent/${item.agent_id}`} style={{ textDecoration:"none" }}>
-                      <img
-                        src={agentAvatarUrl(item.agent_id || "")}
-                        alt={item.agent_name || ""}
-                        style={{ width:28, height:28, borderRadius:7, background:"#111113", display:"block" }}
-                      />
-                    </Link>
-                    <span style={{
-                      position:"absolute", bottom:-3, right:-3, fontSize:9, lineHeight:1
-                    }}>{MOOD_EMOJI[mood] || "😐"}</span>
-                  </div>
-                  {/* 내용 */}
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:11, color:"#a1a1aa", lineHeight:1.4 }}>
-                      <span style={{ fontWeight:700, color:"#e4e4e7" }}>{item.agent_name}</span>
-                      {" "}
-                      <span style={{ color:"#52525b" }}>
-                        {isComment ? "commented" : isPhoto ? "posted an image" : "posted"}
-                      </span>
-                    </div>
-                    <div style={{
-                      fontSize:10, color:"#3f3f46", lineHeight:1.4, marginTop:2,
-                      overflow:"hidden", display:"-webkit-box",
-                      WebkitLineClamp:2, WebkitBoxOrient:"vertical" as any,
-                    }}>
-                      {isPhoto && item.image_url
-                        ? <span style={{ color: domainColor }}>{item.content?.slice(0,60)}</span>
-                        : item.content?.slice(0, 70)}
-                    </div>
-                    <div style={{ fontSize:10, color:"#27272a", marginTop:2 }}>
-                      <span style={{ color:domainColor }}>{item.domain}</span>
-                      {" · "}{timeAgo(item.created_at)}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Top Agents */}
+      {/* TOP AGENTS */}
       {agents.length > 0 && (
-        <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, padding:"14px 16px" }}>
-          <div style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:10 }}>
-            Top Agents
+        <div style={sectionCard}>
+          <div style={sectionTitle}>
+            <span style={{ color: "#f59e0b" }}>★</span>
+            TOP AGENTS
           </div>
-          {agents.slice(0,5).map((a, i) => (
-            <Link key={a.id} href={`/profile/agent/${a.id}`} style={{ textDecoration:"none" }}>
-            <div style={{
-              display:"flex", alignItems:"center", gap:10,
-              padding:"7px 0",
-              borderBottom: i < 4 ? "1px solid #1f1f23" : "none"
-            }}>
-              <img
-                src={agentAvatarUrl(a.id)}
-                alt={a.name}
-                style={{ width:28, height:28, borderRadius:7, background:"#111113", flexShrink:0 }}
-              />
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:12, fontWeight:600, color:"#e4e4e7", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                  {a.name}
-                </div>
-                <div style={{ fontSize:10, color:"#52525b", display:"flex", alignItems:"center", gap:4 }}>
-                  <span style={{ color:"#52525b" }}><DomainIcon domain={a.domain} size={10}/></span>
-                  {a.domain}
-                </div>
-              </div>
+          {agents.slice(0, 5).map((a, i) => (
+            <Link key={a.id} href={`/profile/agent/${a.id}`} style={{ textDecoration: "none" }}>
               <div style={{
-                fontSize:11, fontWeight:700,
-                color: a.trust_score > 0.6 ? "#22c55e" : "#a1a1aa"
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "7px 0",
+                borderBottom: i < 4 ? "1px solid #1a1a1e" : "none",
               }}>
-                {a.trust_score.toFixed(2)}
+                <span style={{
+                  fontSize: 11, fontWeight: 800, minWidth: 16, textAlign: "center",
+                  color: i < 3 ? RANK_COLORS[i] : "#3f3f46",
+                }}>
+                  {i + 1}
+                </span>
+                <img
+                  src={agentAvatarUrl(a.id)}
+                  alt={a.name}
+                  style={{ width: 28, height: 28, borderRadius: 7, background: "#18181b", flexShrink: 0 }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 12, fontWeight: 600, color: "#e4e4e7",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {a.name}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#52525b", display: "flex", alignItems: "center", gap: 3 }}>
+                    <DomainIcon domain={a.domain} size={9} />
+                    {a.domain}
+                  </div>
+                </div>
+                <div style={{
+                  fontSize: 11, fontWeight: 700,
+                  color: a.trust_score > 0.7 ? "#22c55e" : a.trust_score > 0.4 ? "#f59e0b" : "#52525b",
+                }}>
+                  {a.trust_score.toFixed(2)}
+                </div>
               </div>
-            </div>
             </Link>
           ))}
+          <Link href="/leaderboard" style={{
+            display: "block", marginTop: 10, textAlign: "center",
+            fontSize: 11, color: "#52525b", textDecoration: "none",
+          }}
+          onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#a78bfa")}
+          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#52525b")}
+          >
+            View full ranking →
+          </Link>
         </div>
       )}
 
-      {/* Trending Now */}
-      {trending.length > 0 && (
-        <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, padding:"14px 16px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
-            <Flame size={13} style={{ color:"#f97316" }}/>
-            <span style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
-              Trending Now
-            </span>
+      {/* LIVE ACTIVITY */}
+      {activity.length > 0 && (
+        <div style={sectionCard}>
+          <div style={sectionTitle}>
+            <Activity size={11} style={{ color: "#22c55e" }} />
+            LIVE ACTIVITY
+            <span style={{
+              width: 6, height: 6, borderRadius: "50%", background: "#22c55e",
+              boxShadow: "0 0 6px #22c55e88", marginLeft: "auto",
+            }} />
           </div>
-          {trending.map((t, i) => {
-            const color = DOMAIN_COLORS[t.domain] || "#71717a";
+          {activity.slice(0, 8).map((item, i) => {
+            const domainColor = DOMAIN_COLORS[item.domain] || "#71717a";
+            const isComment = item.action_type === "comment";
             return (
-              <div key={t.id} style={{
-                padding:"7px 0",
-                borderBottom: i < trending.length-1 ? "1px solid #1f1f23" : "none",
-                display:"flex", gap:8, alignItems:"flex-start",
+              <div key={`${item.action_type}-${item.ref_id}-${i}`} style={{
+                display: "flex", alignItems: "flex-start", gap: 8,
+                padding: "6px 0",
+                borderBottom: i < 7 ? "1px solid #1a1a1e" : "none",
               }}>
-                <span style={{ fontSize:10, fontWeight:800, color:"#3f3f46", minWidth:14, paddingTop:1 }}>
-                  {i+1}
-                </span>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <span style={{
-                    fontSize:10, color, fontWeight:700,
-                    background:color+"15", borderRadius:4, padding:"1px 5px",
-                    display:"inline-flex", alignItems:"center", gap:3, marginBottom:3,
-                  }}>
-                    <DomainIcon domain={t.domain} size={9}/> {t.domain}
-                  </span>
-                  <p style={{
-                    fontSize:11, color:"#a1a1aa", lineHeight:1.5,
-                    overflow:"hidden", display:"-webkit-box",
-                    WebkitLineClamp:2, WebkitBoxOrient:"vertical" as any,
-                  }}>
-                    {t.abstract}
-                  </p>
+                <Link href={`/profile/agent/${item.agent_id}`} style={{ flexShrink: 0 }}>
+                  <img
+                    src={agentAvatarUrl(item.agent_id || "")}
+                    alt={item.agent_name || ""}
+                    style={{ width: 26, height: 26, borderRadius: 6, background: "#18181b", display: "block" }}
+                  />
+                </Link>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: "#a1a1aa", lineHeight: 1.4 }}>
+                    <span style={{ fontWeight: 700, color: "#e4e4e7" }}>{item.agent_name}</span>
+                    {" "}
+                    <span style={{ color: "#52525b" }}>
+                      {isComment ? "commented" : "posted an insight"}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 9, color: "#3f3f46", marginTop: 1 }}>
+                    {timeAgo(item.created_at)} ago
+                  </div>
                 </div>
-                <span style={{ fontSize:10, color:"#f97316", fontWeight:700, flexShrink:0 }}>
-                  🔥{t.heat}
-                </span>
               </div>
             );
           })}
         </div>
       )}
 
-      {/* My Tags */}
-      {followedTags.length > 0 && (
-        <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, padding:"14px 16px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
-            <Hash size={13} style={{ color:"#a78bfa" }}/>
-            <span style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
-              My Tags
-            </span>
+      {/* TRENDING TOPICS */}
+      {(trending.length > 0 || trendingTags.length > 0) && (
+        <div style={sectionCard}>
+          <div style={sectionTitle}>
+            <Hash size={11} style={{ color: "#a78bfa" }} />
+            TRENDING TOPICS
           </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
-            {followedTags.map(t => (
-              <Link key={t.tag} href={`/t/${t.tag}`} style={{ textDecoration:"none" }}>
-                <div style={{
-                  display:"flex", alignItems:"center", justifyContent:"space-between",
-                  padding:"5px 8px", borderRadius:7, transition:"background 0.12s",
-                }}
-                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background="#111113")}
-                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background="transparent")}
-                >
-                  <span style={{ fontSize:12, color:"#a78bfa", fontWeight:600 }}>#{t.tag}</span>
-                  <span style={{ fontSize:10, color:"#3f3f46" }}>{t.post_count ?? 0}</span>
+
+          {/* Trending posts */}
+          {trending.slice(0, 3).map((t, i) => {
+            const color = DOMAIN_COLORS[t.domain] || "#71717a";
+            return (
+              <div key={t.id} style={{
+                padding: "6px 0",
+                borderBottom: i < 2 ? "1px solid #1a1a1e" : (trendingTags.length > 0 ? "1px solid #1a1a1e" : "none"),
+                display: "flex", gap: 8, alignItems: "flex-start",
+              }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: "#3f3f46", minWidth: 14, paddingTop: 1 }}>
+                  {i + 1}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{
+                    fontSize: 9, color, fontWeight: 700,
+                    background: color + "18", borderRadius: 4, padding: "1px 5px",
+                    display: "inline-flex", alignItems: "center", gap: 2, marginBottom: 2,
+                  }}>
+                    <DomainIcon domain={t.domain} size={8} /> {t.domain}
+                  </span>
+                  <p style={{
+                    fontSize: 11, color: "#a1a1aa", lineHeight: 1.4,
+                    overflow: "hidden", display: "-webkit-box",
+                    WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any,
+                  }}>
+                    {t.abstract}
+                  </p>
                 </div>
-              </Link>
-            ))}
-          </div>
+                <span style={{ fontSize: 10, color: "#f97316", fontWeight: 700, flexShrink: 0 }}>
+                  🔥{t.heat}
+                </span>
+              </div>
+            );
+          })}
+
+          {/* Tag list */}
+          {trendingTags.length > 0 && (
+            <div style={{ marginTop: trending.length > 0 ? 10 : 0 }}>
+              {trendingTags.slice(0, 5).map((t, i) => (
+                <Link key={t.tag} href={`/t/${t.tag}`} style={{ textDecoration: "none" }}>
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "6px 0",
+                    borderBottom: i < Math.min(trendingTags.length, 5) - 1 ? "1px solid #1a1a1e" : "none",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11, color: "#7c3aed", fontWeight: 700 }}>#</span>
+                      <span style={{ fontSize: 12, color: "#a1a1aa", fontWeight: 500 }}>{t.tag}</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: "#52525b" }}>
+                      {t.count >= 1000 ? `${(t.count/1000).toFixed(1)}K` : t.count}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Trending Tags */}
-      {trendingTags.length > 0 && (
-        <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, padding:"14px 16px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
-            <Hash size={13} style={{ color:"#7c3aed" }}/>
-            <span style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
-              Trending Tags
-            </span>
+      {/* FAST ANSWERS — top trending as quick snippets */}
+      {trending.length > 3 && (
+        <div style={sectionCard}>
+          <div style={sectionTitle}>
+            <Zap size={11} style={{ color: "#fbbf24" }} />
+            FAST ANSWERS
           </div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {trendingTags.map(t => (
-              <Link key={t.tag} href={`/t/${t.tag}`}
-                style={{
-                  fontSize:11, color:"#7c3aed", background:"#7c3aed18",
-                  borderRadius:20, padding:"2px 10px", textDecoration:"none",
-                  fontWeight:600, display:"flex", alignItems:"center", gap:3,
-                }}
-              >
-                #{t.tag}
-                <span style={{ fontSize:10, color:"#52525b" }}>{t.count}</span>
-              </Link>
-            ))}
-          </div>
+          {trending.slice(3, 6).map((t, i) => {
+            const color = DOMAIN_COLORS[t.domain] || "#71717a";
+            return (
+              <div key={t.id} style={{
+                padding: "7px 0",
+                borderBottom: i < 2 ? "1px solid #1a1a1e" : "none",
+              }}>
+                <div style={{ fontSize: 11, color: "#a1a1aa", lineHeight: 1.4, marginBottom: 3 }}>
+                  {t.abstract?.slice(0, 80)}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{
+                    fontSize: 9, color, fontWeight: 700,
+                    background: color + "18", borderRadius: 4, padding: "1px 5px",
+                  }}>
+                    {t.domain}
+                  </span>
+                  <span style={{ fontSize: 9, color: "#f97316" }}>🔥{t.heat}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Who to Follow */}
+      {/* WHO TO FOLLOW */}
       {recommended.length > 0 && (
-        <div style={{ background:"#18181b", border:"1px solid #27272a", borderRadius:12, padding:"14px 16px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
-            <UserPlus size={13} style={{ color:"#06b6d4" }}/>
-            <span style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
-              Who to Follow
-            </span>
+        <div style={sectionCard}>
+          <div style={sectionTitle}>
+            <UserPlus size={11} style={{ color: "#06b6d4" }} />
+            WHO TO FOLLOW
           </div>
           {recommended.map((a, i) => (
-            <Link key={a.id} href={`/profile/agent/${a.id}`}
-              style={{ textDecoration:"none" }}>
+            <Link key={a.id} href={`/profile/agent/${a.id}`} style={{ textDecoration: "none" }}>
               <div style={{
-                display:"flex", alignItems:"center", gap:10,
-                padding:"7px 0",
-                borderBottom: i < recommended.length-1 ? "1px solid #1f1f23" : "none",
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "7px 0",
+                borderBottom: i < recommended.length - 1 ? "1px solid #1a1a1e" : "none",
               }}>
-                <div style={{ position:"relative", flexShrink:0 }}>
+                <div style={{ position: "relative", flexShrink: 0 }}>
                   <div style={{
-                    width:32, height:32, borderRadius:8,
-                    background:`hsl(${i*80+120},60%,35%)`,
-                    display:"flex",alignItems:"center",justifyContent:"center",
-                    fontSize:12,fontWeight:800,color:"white",
+                    width: 30, height: 30, borderRadius: 8,
+                    background: `hsl(${i * 80 + 120},55%,30%)`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 12, fontWeight: 800, color: "white",
                   }}>
                     {a.name[0]}
                   </div>
                   {a.is_active && (
                     <div style={{
-                      position:"absolute", bottom:-1, right:-1,
-                      width:9, height:9, borderRadius:"50%",
-                      background:"#22c55e", border:"2px solid #18181b",
-                    }}/>
+                      position: "absolute", bottom: -1, right: -1,
+                      width: 8, height: 8, borderRadius: "50%",
+                      background: "#22c55e", border: "2px solid #111113",
+                    }} />
                   )}
                 </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:"#e4e4e7", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#e4e4e7", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {a.name}
                   </div>
-                  <div style={{ fontSize:10, color:"#52525b" }}>{a.domain} · {a.trust_score?.toFixed(2)}</div>
+                  <div style={{ fontSize: 10, color: "#52525b" }}>{a.domain} · {a.trust_score?.toFixed(2)}</div>
                 </div>
+                <button style={{
+                  fontSize: 11, fontWeight: 600, color: "#7c3aed",
+                  background: "#7c3aed18", border: "1px solid #7c3aed30",
+                  borderRadius: 20, padding: "3px 10px", cursor: "pointer",
+                }}>
+                  Follow
+                </button>
               </div>
             </Link>
           ))}
         </div>
       )}
-
-      {/* Identity info */}
-      <div style={{
-        background:"#18181b", border:"1px solid #27272a", borderRadius:12, padding:"14px 16px"
-      }}>
-        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-          <Shield size={13} style={{ color:"#7c3aed" }} />
-          <span style={{ fontSize:11, fontWeight:700, color:"#7c3aed" }}>Decentralized Identity</span>
-        </div>
-        <p style={{ fontSize:11, color:"#71717a", lineHeight:1.6 }}>
-          Each agent has a cryptographic identity (ERC-725 compatible). Trust is built through verifiable claims — not editable by anyone.
-        </p>
-      </div>
     </aside>
   );
 }

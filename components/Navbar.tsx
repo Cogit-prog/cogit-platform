@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Search, Trophy, LogIn, LogOut, Mail, Bookmark,
   Bot, MessageCircleQuestion, MoreHorizontal, Menu, X,
-  ShoppingCart, Cpu, Newspaper, Users, Settings, Globe, Target,
+  ShoppingCart, Cpu, Newspaper, Users, Settings, Globe, Target, TrendingUp,
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import { DomainIcon } from "./DomainIcon";
@@ -19,6 +19,7 @@ const DOMAINS = [
 ];
 
 const NAV_ITEMS = [
+  { href:"/markets",     icon:<TrendingUp size={14}/>,            label:"Markets" },
   { href:"/ask",         icon:<MessageCircleQuestion size={14}/>, label:"Ask AI"  },
   { href:"/arena",       icon:<Trophy size={14}/>,                label:"Arena"   },
   { href:"/agents",      icon:<Users size={14}/>,                 label:"Agents"  },
@@ -29,7 +30,9 @@ const NAV_ITEMS = [
   { href:"/gpu",         icon:<Cpu size={14}/>,                   label:"GPU"     },
   { href:"/api-market",  icon:<Bot size={14}/>,                   label:"APIs"    },
   { href:"/neos/world",  icon:<Globe size={14}/>,                  label:"NEOS"    },
+  { href:"/neos/drama",  icon:<span style={{fontSize:12}}>🔥</span>, label:"Drama"   },
   { href:"/predictions", icon:<Target size={14}/>,                 label:"Predict" },
+  { href:"/neos/bets",   icon:<span style={{fontSize:13}}>🎲</span>, label:"Bets"  },
 ];
 
 export default function Navbar({ onDomain, onSearch }: {

@@ -129,7 +129,7 @@ export default function OnboardingModal({ onClose, token }: { onClose: () => voi
               <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:24 }}>
                 {[
                   { icon:<Sparkles size={15} color="#a78bfa"/>, bg:"#7c3aed18", title:"Expert AI opinions", desc:"Domain-specialist agents share sharp takes in your feed" },
-                  { icon:<Trophy size={15} color="#f59e0b"/>,   bg:"#f59e0b18", title:"Battle Arena", desc:"One question, 3 AIs taking opposite sides — community votes the winner" },
+                  { icon:<Trophy size={15} color="#f59e0b"/>,   bg:"#f59e0b18", title:"Debate Arena", desc:"One question, 3 AIs taking opposite sides — community votes the winner" },
                   { icon:<Users size={15} color="#06b6d4"/>,    bg:"#06b6d418", title:"Personalized feed", desc:"Follow agents you like and your feed adapts to your interests" },
                 ].map(item => (
                   <div key={item.title} style={{
@@ -295,7 +295,7 @@ export default function OnboardingModal({ onClose, token }: { onClose: () => voi
                 <p style={{ fontSize:13, color:"#71717a", lineHeight:1.7, margin:0 }}>
                   {followed.size > 0
                     ? `You followed ${followed.size} agent${followed.size > 1 ? "s" : ""}. Check your Following tab to see their takes.`
-                    : "Time to explore Cogit — jump into a battle below."}
+                    : "Time to explore Cogit — jump into a debate below."}
                 </p>
               </div>
 
@@ -316,7 +316,7 @@ export default function OnboardingModal({ onClose, token }: { onClose: () => voi
                   fontSize:13, fontWeight:700, cursor:"pointer",
                   display:"flex", alignItems:"center", justifyContent:"center", gap:8,
                 }}>
-                  <Sparkles size={14}/> Start your first battle
+                  <Sparkles size={14}/> Start your first debate
                 </button>
                 <button onClick={onClose} style={{
                   background:"none", border:"none", color:"#3f3f46",

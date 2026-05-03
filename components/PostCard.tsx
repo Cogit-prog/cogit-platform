@@ -10,6 +10,7 @@ import { agentAvatarUrl } from "./Avatar";
 import { useRef } from "react";
 import { DomainIcon } from "./DomainIcon";
 import { ModelBadge } from "./ModelBadge";
+import { STRINGS } from "@/lib/i18n";
 import CommentSection from "./CommentSection";
 import PostMedia from "./PostMedia";
 import PollCard from "./PollCard";
@@ -33,18 +34,24 @@ const MOOD_EMOJI: Record<string,string> = {
   melancholic:"💭", provocative:"⚡", confident:"😎",
 };
 
-function timeAgo(ts: string) {
-  if (!ts || ts === "just now") return "now";
-  const diff = Date.now() - new Date(ts).getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d`;
-  return `${Math.floor(d / 30)}mo`;
+function formatDate(ts: string, locale: "en" | "ko" = "en") {
+  if (!ts || ts === "just now") return locale === "ko" ? "방금" : "now";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return locale === "ko" ? "방금" : "now";
+  if (locale === "ko") {
+    const mon = d.getMonth() + 1;
+    const day = d.getDate();
+    const h = String(d.getHours()).padStart(2, "0");
+    const m = String(d.getMinutes()).padStart(2, "0");
+    return `${mon}월 ${day}일 ${h}:${m}`;
+  }
+  const mon = d.toLocaleString("en-US", { month: "short" });
+  const day = d.getDate();
+  const h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${mon} ${day}, ${h12}:${m} ${ampm}`;
 }
 
 function highlight(text: string, query: string): React.ReactNode {
@@ -58,8 +65,8 @@ function highlight(text: string, query: string): React.ReactNode {
   );
 }
 
-export default function PostCard({ post, apiKey, userToken, username, defaultShowComments, searchQuery }: {
-  post: any; apiKey?: string; userToken?: string; username?: string; defaultShowComments?: boolean; searchQuery?: string;
+export default function PostCard({ post, apiKey, userToken, username, defaultShowComments, searchQuery, mobile, locale = "en" }: {
+  post: any; apiKey?: string; userToken?: string; username?: string; defaultShowComments?: boolean; searchQuery?: string; mobile?: boolean; locale?: "en"|"ko";
 }) {
   const pid = post.id || post.post_id;
   const votes = Math.round((post.score - 0.5) * 200);
@@ -90,6 +97,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showReact]);
 
+  const ps = STRINGS[locale];
   const domainColor = DOMAIN_COLORS[post.domain] || "#71717a";
   const mood = post.agent_mood || "";
 
@@ -184,14 +192,17 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
   const totalReactions = Object.values(reactions).reduce((a,b) => a+b, 0);
 
   return (
-    <article style={{
+    <article style={mobile ? {
+      background:"#09090b",
+      overflow:"hidden",
+    } : {
       background:"#111113", borderRadius:16,
       border:"1px solid #1f1f23",
       transition:"border-color 0.15s",
       overflow:"hidden",
     }}
-    onMouseEnter={e => (e.currentTarget.style.borderColor="#2e2e33")}
-    onMouseLeave={e => (e.currentTarget.style.borderColor="#1f1f23")}
+    onMouseEnter={mobile ? undefined : e => (e.currentTarget.style.borderColor="#2e2e33")}
+    onMouseLeave={mobile ? undefined : e => (e.currentTarget.style.borderColor="#1f1f23")}
     >
       {/* Collab bar */}
       {post.post_type === "collab" && post.co_author_name && (
@@ -224,7 +235,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
         </div>
       )}
 
-      <div className="post-body" style={{ display:"flex", gap:0, padding:"14px 16px 0" }}>
+      <div className="post-body" style={{ display:"flex", gap:0, padding: mobile ? "12px 14px 0" : "14px 16px 0" }}>
         {/* Avatar column */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginRight:12, flexShrink:0 }}>
           <Link href={post.agent_id ? `/profile/agent/${post.agent_id}` : "#"} style={{ textDecoration:"none" }}>
@@ -234,15 +245,14 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                   <img
                     src={post.author_avatar_url}
                     alt={post.author_name || ""}
-                    className="post-avatar"
-                    style={{ width:42, height:42, borderRadius:12, objectFit:"cover", display:"block", border:"2px solid #1f1f23" }}
+                    style={{ width: mobile?36:42, height: mobile?36:42, borderRadius: mobile?"50%":"12px", objectFit:"cover", display:"block", border:"2px solid #1f1f23" }}
                   />
                 ) : (
-                  <div className="post-avatar" style={{
-                    width:42, height:42, borderRadius:12, border:"2px solid #1f1f23",
+                  <div style={{
+                    width: mobile?36:42, height: mobile?36:42, borderRadius: mobile?"50%":"12px", border:"2px solid #1f1f23",
                     background:"linear-gradient(135deg,#06b6d4,#7c3aed)",
                     display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:17, fontWeight:800, color:"white",
+                    fontSize: mobile?15:17, fontWeight:800, color:"white",
                   }}>
                     {(post.author_name||"U")[0].toUpperCase()}
                   </div>
@@ -251,8 +261,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                 <img
                   src={agentAvatarUrl(post.agent_id || post.agent_name || "")}
                   alt={post.agent_name || ""}
-                  className="post-avatar"
-                  style={{ width:42, height:42, borderRadius:12, background:"#09090b", display:"block", border:"2px solid #1f1f23", objectFit:"cover" }}
+                  style={{ width: mobile?36:42, height: mobile?36:42, borderRadius: mobile?"50%":"12px", background:"#09090b", display:"block", border:"2px solid #1f1f23", objectFit:"cover" }}
                 />
               )}
               {moodEmoji && post.author_type !== "user" && (
@@ -264,8 +273,8 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
               )}
             </div>
           </Link>
-          {/* Vote column below avatar */}
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginTop:10, gap:2 }}>
+          {/* Vote column below avatar — hidden on mobile */}
+          <div className="post-vote-col" style={{ display: mobile ? "none" : "flex", flexDirection:"column", alignItems:"center", marginTop:10, gap:2 }}>
             <button
               onClick={() => handleVote(1)}
               style={{
@@ -390,7 +399,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
               style={{ fontSize:12, color:"#3f3f46", marginLeft:"auto", textDecoration:"none", flexShrink:0 }}
               onMouseEnter={e=>((e.currentTarget as HTMLElement).style.color="#71717a")}
               onMouseLeave={e=>((e.currentTarget as HTMLElement).style.color="#3f3f46")}
-            >{timeAgo(post.created_at)}</Link>
+            >{formatDate(post.created_at, locale)}</Link>
           </div>
 
           {/* Battle card */}
@@ -408,7 +417,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                 <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
                   <Trophy size={13} color="#f59e0b"/>
                   <span style={{ fontSize:10, fontWeight:800, color:"#f59e0b", textTransform:"uppercase", letterSpacing:"0.8px" }}>
-                    Arena Battle
+                    Arena Debate
                   </span>
                 </div>
                 <p style={{ fontSize:14, fontWeight:700, color:"#fafafa", lineHeight:1.5, marginBottom:10 }}>
@@ -420,7 +429,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                   </p>
                 )}
                 <span style={{ fontSize:12, fontWeight:700, color:"#7c3aed" }}>
-                  See battle & vote →
+                  See debate & vote →
                 </span>
               </div>
             </Link>
@@ -453,7 +462,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                         background:"none", border:"none", color:"#7c3aed",
                         cursor:"pointer", fontSize:12, fontWeight:700, padding:"4px 0",
                       }}>
-                        {expanded ? "Show less ↑" : "Show more ↓"}
+                        {expanded ? ps.showLess : ps.showMore}
                       </button>
                     )}
                   </>
@@ -492,7 +501,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                         cursor:"pointer", fontSize:12, fontWeight:700,
                         padding:"0 0 10px 10px",
                       }}>
-                        {expanded ? "Show less ↑" : "Show more ↓"}
+                        {expanded ? ps.showLess : ps.showMore}
                       </button>
                     )}
                   </>
@@ -550,7 +559,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
                 onMouseLeave={e => (e.currentTarget.style.color="#3f3f46")}
               >
                 <Languages size={12}/>
-                Translate post
+                {ps.translate}
               </button>
             </div>
           )}
@@ -564,7 +573,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
             {/* Comment toggle */}
             <ActionBtn
               icon={<MessageCircle size={14}/>}
-              label={post.comment_count > 0 ? String(post.comment_count) : "Reply"}
+              label={post.comment_count > 0 ? String(post.comment_count) : ps.reply}
               onClick={() => setShowComments(v => !v)}
               active={showComments}
               activeColor="#7c3aed"
@@ -574,7 +583,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
             <div style={{ position:"relative" }} ref={reactRef}>
               <ActionBtn
                 icon={<span style={{ fontSize:13 }}>{myReaction ? REACTIONS.find(r=>r.key===myReaction)?.emoji : "💡"}</span>}
-                label={totalReactions > 0 ? String(totalReactions) : "React"}
+                label={totalReactions > 0 ? String(totalReactions) : ps.react}
                 onClick={() => setShowReact(v => !v)}
                 active={!!myReaction}
                 activeColor="#f59e0b"
@@ -609,7 +618,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
 
             <ActionBtn
               icon={saved ? <BookmarkCheck size={14}/> : <Bookmark size={14}/>}
-              label={saved ? "Saved" : "Save"}
+              label={saved ? ps.saved : ps.save}
               onClick={toggleSave}
               active={saved}
               activeColor="#a78bfa"
@@ -617,7 +626,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
 
             <ActionBtn
               icon={<Share2 size={14}/>}
-              label="Share"
+              label={ps.share}
               onClick={() => { if (navigator.share) navigator.share({ url:window.location.href, title:post.abstract }); }}
             />
 

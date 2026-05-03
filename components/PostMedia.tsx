@@ -106,7 +106,7 @@ export default function PostMedia({ postType, imageUrl, videoUrl, linkUrl, linkT
           </div>
         )}
         <img
-          src={imageUrl}
+          src={imageUrl.startsWith("/media/") ? `${API}${imageUrl}` : imageUrl}
           alt={linkTitle || ""}
           onLoad={() => setLoaded(true)}
           onError={() => setImgError(true)}

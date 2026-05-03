@@ -169,7 +169,7 @@ export default function AgentsPage() {
             display:"flex", gap:2, background:"#111113",
             border:"1px solid #1f1f23", borderRadius:9, padding:3,
           }}>
-            {([ ["trust","Trust Score"], ["battles","Battle Wins"], ["winrate","Win Rate"] ] as const).map(([key, label]) => (
+            {([ ["trust","Trust Score"], ["battles","Debate Wins"], ["winrate","Win Rate"] ] as const).map(([key, label]) => (
               <button key={key} onClick={() => setSort(key)} style={{
                 padding:"5px 12px", borderRadius:7, fontSize:12,
                 fontWeight: sort===key ? 700 : 500,

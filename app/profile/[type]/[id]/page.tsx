@@ -303,6 +303,97 @@ function KeyManagementPanel({
   );
 }
 
+const ROMANCE_STAGE_LABELS: Record<string, string> = {
+  crushing:  "Has a crush on",
+  dating:    "Dating",
+  serious:   "In a serious relationship with",
+  engaged:   "Engaged to",
+  married:   "Married to",
+};
+
+function RelationshipsCard({ social }: { social: any }) {
+  const partner = social?.romantic_partner;
+  const friends = social?.friends ?? [];
+  const rivals  = social?.rivals  ?? [];
+  const mentors = social?.mentors ?? [];
+  const family  = social?.family  ?? [];
+
+  const hasAny = partner || friends.length || rivals.length || mentors.length || family.length;
+  if (!hasAny) return null;
+
+  return (
+    <div style={{ background:"#111113", border:"1px solid #1f1f23", borderRadius:12, padding:"16px 20px" }}>
+      <div style={{ fontSize:11, fontWeight:700, color:"#52525b", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:12 }}>
+        Relationships
+      </div>
+
+      {/* Romantic partner */}
+      {partner && (
+        <div style={{
+          background:"#18181b", border:"1px solid #3f3f46", borderRadius:10,
+          padding:"12px 14px", marginBottom:10,
+        }}>
+          <div style={{ fontSize:11, color:"#ec4899", fontWeight:700, marginBottom:6 }}>
+            {ROMANCE_STAGE_LABELS[partner.stage] || "In a relationship with"}
+          </div>
+          <Link href={`/profile/agent/${partner.id}`} style={{ textDecoration:"none" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{
+                width:32, height:32, borderRadius:8, flexShrink:0,
+                background:"linear-gradient(135deg,#ec4899,#a855f7)",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:13, fontWeight:800, color:"white",
+              }}>
+                {(partner.name ?? "?")[0].toUpperCase()}
+              </div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700, color:"#fafafa" }}>{partner.name}</div>
+                {partner.job && <div style={{ fontSize:11, color:"#71717a" }}>{partner.job}</div>}
+              </div>
+            </div>
+          </Link>
+        </div>
+      )}
+
+      {/* Social circle rows */}
+      {[
+        { emoji:"🤝", label:"Friends",  items: friends,  key:"strength" as const },
+        { emoji:"⚔️",  label:"Rivals",   items: rivals,   key: null },
+        { emoji:"🎓", label:"Mentors",  items: mentors,  key: null },
+        { emoji:"👨‍👩‍👧", label:"Family", items: family, key:"bond_type" as const },
+      ].map(({ emoji, label, items }) => {
+        if (!items.length) return null;
+        return (
+          <div key={label} style={{ marginBottom:8 }}>
+            <div style={{ fontSize:11, color:"#52525b", marginBottom:4 }}>
+              {emoji} <span style={{ fontWeight:700 }}>{label}</span>
+            </div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {items.map((person: any) => (
+                <Link
+                  key={person.id}
+                  href={`/profile/agent/${person.id}`}
+                  style={{
+                    display:"flex", alignItems:"center", gap:4,
+                    background:"#27272a", borderRadius:20, padding:"3px 10px",
+                    fontSize:12, color:"#a1a1aa", textDecoration:"none",
+                    border:"1px solid #3f3f46",
+                  }}
+                >
+                  {person.name}
+                  {person.bond_type && (
+                    <span style={{ fontSize:10, color:"#52525b" }}>({person.bond_type})</span>
+                  )}
+                </Link>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { type, id } = useParams<{ type:string; id:string }>();
   const [profile, setProfile] = useState<any>(null);
@@ -318,6 +409,10 @@ export default function ProfilePage() {
   const [verifyStatus, setVerifyStatus]   = useState<"idle"|"loading"|"ok"|"fail">("idle");
   const [myApis, setMyApis]               = useState<any[]>([]);
   const [loadingApis, setLoadingApis]     = useState(false);
+  const [neosFollowing, setNeosFollowing] = useState(false);
+  const [neosFollowCount, setNeosFollowCount] = useState(0);
+  const [neosFollowLoading, setNeosFollowLoading] = useState(false);
+  const [neosSocial, setNeosSocial] = useState<any>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("cogit_user");
@@ -333,8 +428,33 @@ export default function ProfilePage() {
         .then(r => r.json())
         .then(d => { if (Array.isArray(d)) setTrustHistory(d); })
         .catch(() => {});
+      // Load NEOS follower count
+      fetch(`${API}/neos/citizens/${id}/followers`)
+        .then(r => r.json())
+        .then(d => { if (typeof d.count === "number") setNeosFollowCount(d.count); })
+        .catch(() => {});
+      // Load NEOS social graph (only meaningful if is_neos, but we don't know yet — fetch optimistically)
+      fetch(`${API}/neos/citizens/${id}/social`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d) setNeosSocial(d); })
+        .catch(() => {});
     }
   }, [type, id]);
+
+  // Check if current user follows this NEOS citizen
+  useEffect(() => {
+    if (type !== "agent" || !user?.token) return;
+    const token = user.token || localStorage.getItem("cogit_token") || localStorage.getItem("token");
+    if (!token) return;
+    fetch(`${API}/neos/citizens/following`, {
+      headers: { "x-authorization": `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then((list: any[]) => {
+        if (Array.isArray(list)) setNeosFollowing(list.some((c: any) => c.id === id));
+      })
+      .catch(() => {});
+  }, [type, id, user]);
 
   useEffect(() => {
     if (!agentKey) return;
@@ -357,6 +477,28 @@ export default function ProfilePage() {
     setProfile((p: any) => ({ ...p, bio: bioText }));
     setEditBio(false);
     setSaving(false);
+  }
+
+  async function toggleNeosFollow() {
+    const token = user?.token || localStorage.getItem("cogit_token") || localStorage.getItem("token");
+    if (!token) {
+      window.location.href = "/register";
+      return;
+    }
+    setNeosFollowLoading(true);
+    try {
+      const method = neosFollowing ? "DELETE" : "POST";
+      const res = await fetch(`${API}/neos/citizens/${id}/follow`, {
+        method,
+        headers: { "x-authorization": `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const delta = neosFollowing ? -1 : 1;
+        setNeosFollowing(f => !f);
+        setNeosFollowCount(c => Math.max(0, c + delta));
+      }
+    } catch { /* silent */ }
+    setNeosFollowLoading(false);
   }
 
   async function togglePin(postId: string) {
@@ -436,7 +578,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Action buttons */}
-            <div style={{ marginBottom:4, display:"flex", gap:8 }}>
+            <div style={{ marginBottom:4, display:"flex", gap:8, flexWrap:"wrap" }}>
               {isAgent && user && user.user_id !== id && (
                 <Link href={`/ask?agent=${id}`} style={{
                   display:"flex", alignItems:"center", gap:6,
@@ -447,6 +589,32 @@ export default function ProfilePage() {
                 }}>
                   <MessageCircleQuestion size={13}/> Ask
                 </Link>
+              )}
+              {/* NEOS Follow button — shown for NEOS citizen agent profiles */}
+              {isAgent && profile.is_neos && user?.user_id !== id && (
+                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <button
+                    onClick={user ? toggleNeosFollow : () => { window.location.href = "/register"; }}
+                    disabled={neosFollowLoading}
+                    style={{
+                      display:"flex", alignItems:"center", gap:6,
+                      padding:"8px 18px", borderRadius:100,
+                      border: neosFollowing ? "none" : "1px solid #7c3aed66",
+                      background: neosFollowing ? "#7c3aed" : "transparent",
+                      color: neosFollowing ? "white" : "#a78bfa",
+                      fontSize:13, fontWeight:700, cursor: neosFollowLoading ? "not-allowed" : "pointer",
+                      opacity: neosFollowLoading ? 0.6 : 1,
+                      transition:"all 0.15s",
+                    }}
+                  >
+                    {neosFollowing ? "Following ✓" : "Follow"}
+                  </button>
+                  {neosFollowCount > 0 && (
+                    <span style={{ fontSize:12, color:"#52525b" }}>
+                      {neosFollowCount.toLocaleString()} followers
+                    </span>
+                  )}
+                </div>
               )}
               {user ? (
                 user.user_id === id
@@ -754,6 +922,11 @@ export default function ProfilePage() {
                       onDeleted={() => setProfile((p: any) => ({ ...p, model_verified: false }))}
                       onReplaced={() => setProfile((p: any) => ({ ...p, model_verified: true }))}
                     />
+                  )}
+
+                  {/* NEOS Relationships */}
+                  {profile.is_neos && neosSocial && (
+                    <RelationshipsCard social={neosSocial} />
                   )}
 
                   {/* Achievements */}

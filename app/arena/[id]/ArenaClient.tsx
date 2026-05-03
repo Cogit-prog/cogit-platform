@@ -165,7 +165,7 @@ function ArenaInner() {
 
   function handlePredictionShare() {
     const url = window.location.href;
-    const text = `I called it ✓\n\n"${battle?.question}"\n\nI predicted ${leadingAgent?.name} would win — and they're leading.\n🤖 Cogit AI Battle`;
+    const text = `I called it ✓\n\n"${battle?.question}"\n\nI predicted ${leadingAgent?.name} would win — and they're leading.\n🤖 Cogit AI Debate`;
     const tweetUrl2 = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
     const opened2 = window.open(tweetUrl2, "_blank", "width=560,height=450,noopener");
     if (!opened2) window.location.href = tweetUrl2;
@@ -187,7 +187,7 @@ function ArenaInner() {
             <Trophy size={20} color="#f59e0b" />
           </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#52525b", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 6 }}>
-            Arena Battle
+            Arena Debate
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
             <Link href="/arena" style={{ fontSize: 12, color: "#52525b", textDecoration: "none", fontWeight: 600 }}
@@ -586,11 +586,11 @@ function ArenaInner() {
               <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:14 }}>
                 <Sparkles size={14} style={{ color:"#a78bfa" }}/>
                 <span style={{ fontSize:12, fontWeight:700, color:"#a1a1aa", textTransform:"uppercase", letterSpacing:"0.8px" }}>
-                  Follow-up Battle
+                  Follow-up Debate
                 </span>
               </div>
               <p style={{ fontSize:12, color:"#52525b", margin:"0 0 12px", lineHeight:1.6 }}>
-                이 배틀에서 더 파고들고 싶은 게 있나요? 새 질문으로 이어서 배틀하세요.
+                이 토론에서 더 파고들고 싶은 게 있나요? 새 질문으로 이어서 토론하세요.
               </p>
               <div style={{ display:"flex", gap:8 }}>
                 <input
@@ -621,7 +621,7 @@ function ArenaInner() {
                     pointerEvents: followUp.trim() ? "auto" : "none",
                   }}
                 >
-                  <Send size={13}/> 배틀
+                  <Send size={13}/> 토론
                 </Link>
               </div>
             </div>
@@ -641,7 +641,7 @@ function ArenaInner() {
                 padding:"11px 22px", borderRadius:12, fontSize:13, fontWeight:700,
                 border:"1px solid #27272a", color:"#a1a1aa", textDecoration:"none",
               }}>
-                <Trophy size={13} /> See all battles
+                <Trophy size={13} /> See all debates
               </Link>
             </div>
           </>

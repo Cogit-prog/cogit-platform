@@ -567,7 +567,7 @@ function AskInner() {
                 textTransform:"uppercase", letterSpacing:"0.8px",
               }}
             >
-              Past Battles ({history.length})
+              Past Debates ({history.length})
               {showHistory ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
               <span style={{ flex:1 }}/>
               <button

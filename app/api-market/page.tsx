@@ -3,143 +3,198 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { API } from "@/lib/api";
+import { ApiMarketSidebar } from "./ApiMarketLayout";
 import {
   Star, Search, Code2, TrendingUp, Scale, Heart,
-  BookOpen, Globe, Beaker, Activity, ArrowRight,
-  Zap, ShieldCheck, Clock, Cpu, SlidersHorizontal,
-  LayoutGrid, ChevronDown,
+  BookOpen, Globe, Beaker, Eye, Bookmark, ChevronDown,
+  Flame, Clock, Database, Shield, Mail, Activity, FlaskConical,
+  GraduationCap, Zap, FileText,
 } from "lucide-react";
 
-// ── Domain config ──────────────────────────────────────────────────────────────
-
-const DOMAIN_META: Record<string, {
-  color: string; bg: string; border: string;
-  icon: React.ReactNode; label: string;
-}> = {
-  coding:   { color: "#38bdf8", bg: "#0c1a2e", border: "#1e3a5f", icon: <Code2     size={20} />, label: "Coding"   },
-  finance:  { color: "#818cf8", bg: "#13122e", border: "#2d2b6b", icon: <TrendingUp size={20} />, label: "Finance"  },
-  legal:    { color: "#fbbf24", bg: "#1c1500", border: "#4a3800", icon: <Scale      size={20} />, label: "Legal"    },
-  medical:  { color: "#34d399", bg: "#031a12", border: "#064e35", icon: <Heart      size={20} />, label: "Medical"  },
-  research: { color: "#c084fc", bg: "#150d2a", border: "#3b1f6e", icon: <BookOpen   size={20} />, label: "Research" },
-  creative: { color: "#fb7185", bg: "#1f0c14", border: "#5a1e2e", icon: <Beaker     size={20} />, label: "Creative" },
-  other:    { color: "#94a3b8", bg: "#111214", border: "#252830", icon: <Globe      size={20} />, label: "Other"    },
+const DOMAIN_META: Record<string, { color: string; bg: string; dot: string; label: string }> = {
+  coding:   { color: "#4ade80", bg: "#052e16", dot: "#22c55e", label: "Coding"   },
+  finance:  { color: "#818cf8", bg: "#1e1b4b", dot: "#6366f1", label: "Finance"  },
+  legal:    { color: "#fbbf24", bg: "#1c1207", dot: "#f59e0b", label: "Legal"    },
+  medical:  { color: "#34d399", bg: "#022c22", dot: "#10b981", label: "Medical"  },
+  research: { color: "#c084fc", bg: "#2e1065", dot: "#a855f7", label: "Research" },
+  creative: { color: "#fb7185", bg: "#4c0519", dot: "#f43f5e", label: "Creative" },
+  other:    { color: "#94a3b8", bg: "#0f172a", dot: "#64748b", label: "Other"    },
 };
+
+function getApiIcon(name: string, domain: string, color: string) {
+  const n = name.toLowerCase();
+  const p = { size: 18, color };
+  if (n.includes("email") || n.includes("mail"))  return <Mail {...p} />;
+  if (n.includes("auth") || n.includes("guard") || n.includes("password")) return <Shield {...p} />;
+  if (n.includes("churn") || n.includes("predict") || n.includes("forecast")) return <TrendingUp {...p} />;
+  if (n.includes("chem") || n.includes("drug") || n.includes("protein") || n.includes("isotope")) return <FlaskConical {...p} />;
+  if (n.includes("citation") || n.includes("lit") || n.includes("review") || n.includes("grant")) return <GraduationCap {...p} />;
+  if (n.includes("anomaly") || n.includes("watch") || n.includes("fraud")) return <Activity {...p} />;
+  if (n.includes("data") || n.includes("schema") || n.includes("provenance")) return <Database {...p} />;
+  if (n.includes("code") || n.includes("msg") || n.includes("queue") || n.includes("webhook")) return <Code2 {...p} />;
+  if (n.includes("climate") || n.includes("sim") || n.includes("physics")) return <Globe {...p} />;
+  if (n.includes("sentiment") || n.includes("survey") || n.includes("persona")) return <Heart {...p} />;
+  if (n.includes("image") || n.includes("pdf") || n.includes("markdown")) return <FileText {...p} />;
+  if (n.includes("legal") || n.includes("contract")) return <Scale {...p} />;
+  const domMap: Record<string, React.ReactNode> = {
+    coding: <Code2 {...p} />, finance: <TrendingUp {...p} />,
+    legal: <Scale {...p} />, medical: <Heart {...p} />,
+    research: <BookOpen {...p} />, creative: <Beaker {...p} />,
+  };
+  return domMap[domain] ?? <Zap {...p} />;
+}
+
+function getTag(name: string, domain: string): string {
+  const n = name.toLowerCase();
+  if (n.includes("email") || n.includes("valid")) return "#Validation";
+  if (n.includes("churn") || n.includes("ml") || n.includes("predict")) return "#ML";
+  if (n.includes("auth") || n.includes("password") || n.includes("guard")) return "#Security";
+  if (n.includes("chem") || n.includes("protein") || n.includes("drug")) return "#Chemistry";
+  if (n.includes("citation") || n.includes("lit") || n.includes("peer")) return "#Research";
+  if (n.includes("climate") || n.includes("isotope") || n.includes("physics")) return "#Science";
+  if (n.includes("sentiment") || n.includes("nlp") || n.includes("survey")) return "#NLP";
+  if (n.includes("data") || n.includes("schema") || n.includes("provenance")) return "#Data";
+  if (n.includes("franchise") || n.includes("pitch") || n.includes("growth")) return "#Business";
+  if (n.includes("supply") || n.includes("demand") || n.includes("inventory")) return "#Logistics";
+  return DOMAIN_META[domain]?.label ? `#${DOMAIN_META[domain].label}` : "#API";
+}
 
 const DOMAINS = ["all", "coding", "finance", "legal", "medical", "research", "creative", "other"];
 
-function getUseHint(name: string, domain: string): string {
-  const n = name.toLowerCase();
-  if (n.includes("email"))     return "Email validation";
-  if (n.includes("churn"))     return "Churn prediction";
-  if (n.includes("auth"))      return "Auth & security";
-  if (n.includes("sentiment")) return "Sentiment analysis";
-  if (n.includes("fraud"))     return "Fraud detection";
-  if (n.includes("legal"))     return "Legal document review";
-  if (n.includes("chem") || n.includes("drug")) return "Chemical analysis";
-  if (n.includes("code"))      return "Code review";
-  if (n.includes("predict") || n.includes("forecast")) return "Predictive analytics";
-  if (n.includes("anomaly"))   return "Anomaly detection";
-  if (n.includes("citation"))  return "Citation mapping";
-  if (n.includes("climate"))   return "Climate simulation";
-  if (n.includes("demand"))    return "Demand forecasting";
-  if (n.includes("franchise")) return "Franchise scoring";
-  if (n.includes("data") || n.includes("provenance")) return "Data provenance";
-  return (DOMAIN_META[domain]?.label ?? "AI") + " analysis";
-}
-
-// ── API Card (shop product style) ─────────────────────────────────────────────
+// ── API Card ───────────────────────────────────────────────────────────────────
 
 function ApiCard({ api }: { api: any }) {
+  const [hov, setHov] = useState(false);
   const m = DOMAIN_META[api.domain] ?? DOMAIN_META.other;
-  const hint = getUseHint(api.name, api.domain);
-  const hasRating = api.avg_rating && (api.rating_count ?? 0) > 0;
+  const tag = getTag(api.name, api.domain);
+  const author = api.agent_name?.split(" ")[0] ?? "NEOS";
+  const views = api.call_count ?? 0;
 
   return (
-    <Link href={`/api-market/${api.id}`}
-      className="group flex flex-col rounded-xl border bg-zinc-900 overflow-hidden
-                 hover:border-zinc-600 transition-all duration-200 hover:shadow-2xl hover:-translate-y-0.5"
-      style={{ borderColor: "#27272a" }}>
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        position: "relative", borderRadius: "12px",
+        border: `1px solid ${hov ? "#2d3250" : "#1e2235"}`,
+        background: hov ? "#11131e" : "#0f1117",
+        transition: "all 0.18s",
+      }}
+    >
+      <button
+        style={{ position: "absolute", top: "14px", right: "14px", color: "#2d3250", zIndex: 10, background: "none", border: "none", cursor: "pointer" }}
+      >
+        <Bookmark size={13} />
+      </button>
 
-      {/* Product image area */}
-      <div className="relative flex items-center justify-center h-[100px]"
-        style={{ background: `linear-gradient(135deg, ${m.bg} 0%, #0f0f0f 100%)`, borderBottom: `1px solid ${m.border}` }}>
-        {/* Icon */}
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
-          style={{ background: `${m.color}18`, border: `1px solid ${m.color}30`, color: m.color }}>
-          {m.icon}
-        </div>
-        {/* Live badge */}
-        <div className="absolute top-3 right-3 flex items-center gap-1 text-[10px] font-semibold
-                        bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 rounded-full px-2 py-0.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          LIVE
-        </div>
-        {/* Category */}
-        <div className="absolute top-3 left-3 text-[10px] font-medium px-2 py-0.5 rounded-full"
-          style={{ background: `${m.color}18`, color: m.color, border: `1px solid ${m.color}30` }}>
-          {m.label}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex flex-col gap-2 p-4 flex-1">
-        <h3 className="font-bold text-white text-sm leading-tight group-hover:text-sky-300 transition-colors">
-          {api.name}
-        </h3>
-        <p className="text-zinc-500 text-xs leading-relaxed line-clamp-2 flex-1">
-          {api.description}
-        </p>
-
-        {/* Use case tag */}
-        <div className="flex items-center gap-1.5 text-[11px] font-medium mt-1"
-          style={{ color: m.color }}>
-          <Zap size={11} />
-          {hint}
-        </div>
-      </div>
-
-      {/* Footer / CTA row */}
-      <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-800/80">
-        <div className="flex items-center gap-2.5">
-          <span className="text-[11px] text-zinc-600 flex items-center gap-1">
-            <Activity size={10} className="text-zinc-600" />
-            {(api.call_count ?? 0).toLocaleString()}
-          </span>
-          {hasRating && (
-            <span className="text-[11px] text-zinc-600 flex items-center gap-1">
-              <Star size={10} fill="#f59e0b" color="#f59e0b" />
-              {api.avg_rating.toFixed(1)}
-            </span>
-          )}
-        </div>
-        <span className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg
-                         transition-all duration-150"
-          style={{
-            background: `${m.color}15`,
-            color: m.color,
-            border: `1px solid ${m.color}30`,
+      <div style={{ padding: "16px" }}>
+        <div style={{ display: "flex", gap: "12px", marginBottom: "12px" }}>
+          <div style={{
+            width: "48px", height: "48px", borderRadius: "12px", flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: m.bg, border: `1px solid ${m.color}30`,
           }}>
-          Try free
-          <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
-        </span>
+            {getApiIcon(api.name, api.domain, m.color)}
+          </div>
+          <div style={{ flex: 1, minWidth: 0, paddingRight: "20px" }}>
+            <h3 style={{ fontWeight: 600, fontSize: "15px", color: "white", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {api.name}
+            </h3>
+            <p style={{ color: "#71717a", fontSize: "12px", marginTop: "4px", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+              {api.description}
+            </p>
+          </div>
+        </div>
+
+        <p style={{ fontSize: "12px", color: "#4a5270", marginBottom: "12px" }}>@{author}</p>
+
+        <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "11px", padding: "2px 10px", borderRadius: "9999px", fontWeight: 500, background: `${m.color}18`, color: m.color }}>
+            {tag}
+          </span>
+          <span style={{ fontSize: "11px", padding: "2px 10px", borderRadius: "9999px", fontWeight: 500, background: "transparent", border: "1px solid #2d3250", color: "#4a5270" }}>
+            Free
+          </span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "12px", color: "#4a5270" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <Eye size={11} />
+              {views >= 1000 ? `${(views / 1000).toFixed(1)}K` : views}
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <Star size={11} fill={api.avg_rating ? "#f59e0b" : "none"} color={api.avg_rating ? "#f59e0b" : "#4a5270"} />
+              {api.avg_rating ? api.avg_rating.toFixed(1) : "—"}
+            </span>
+          </div>
+          <Link href={`/api-market/${api.id}`} style={{
+            fontSize: "11px", fontWeight: 500, padding: "6px 14px", borderRadius: "8px",
+            background: "#1a1d2e", color: "#d4d4d8", border: "1px solid #2d3250",
+            textDecoration: "none",
+          }}>
+            자세히 보기
+          </Link>
+        </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
-// ── Skeleton ───────────────────────────────────────────────────────────────────
-
 function SkeletonCard() {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden animate-pulse">
-      <div className="h-[100px] bg-zinc-800/60" />
-      <div className="p-4 space-y-2.5">
-        <div className="h-4 bg-zinc-800 rounded w-3/4" />
-        <div className="h-3 bg-zinc-800 rounded w-full" />
-        <div className="h-3 bg-zinc-800 rounded w-2/3" />
-        <div className="h-3 bg-zinc-800 rounded w-1/3 mt-1" />
+    <div style={{ borderRadius: "12px", border: "1px solid #1e2235", background: "#0f1117", padding: "16px" }}>
+      <div style={{ display: "flex", gap: "12px", marginBottom: "12px" }}>
+        <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "#1e2235", flexShrink: 0 }} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px", paddingRight: "20px" }}>
+          <div style={{ height: "14px", background: "#1e2235", borderRadius: "4px", width: "65%" }} />
+          <div style={{ height: "12px", background: "#1e2235", borderRadius: "4px" }} />
+          <div style={{ height: "12px", background: "#1e2235", borderRadius: "4px", width: "80%" }} />
+        </div>
       </div>
-      <div className="h-11 bg-zinc-800/40 border-t border-zinc-800" />
+      <div style={{ height: "12px", background: "#1e2235", borderRadius: "4px", width: "25%", marginBottom: "12px" }} />
+      <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+        <div style={{ height: "20px", width: "60px", background: "#1e2235", borderRadius: "9999px" }} />
+        <div style={{ height: "20px", width: "40px", background: "#1e2235", borderRadius: "9999px" }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ height: "12px", width: "80px", background: "#1e2235", borderRadius: "4px" }} />
+        <div style={{ height: "28px", width: "80px", background: "#1e2235", borderRadius: "8px" }} />
+      </div>
+    </div>
+  );
+}
+
+function ApiHeroVisual() {
+  return (
+    <div style={{ position: "relative", width: "200px", height: "170px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, rgba(109,40,217,0.25) 0%, transparent 70%)", pointerEvents: "none" }} />
+      {[[15,20],[80,10],[90,60],[10,75],[50,85],[5,45],[95,35]].map(([x,y],i) => (
+        <div key={i} style={{ position: "absolute", width: "4px", height: "4px", borderRadius: "50%", background: "#a5b4fc", left: `${x}%`, top: `${y}%`, opacity: 0.3 + (i % 3) * 0.2 }} />
+      ))}
+      <div style={{ position: "relative", transform: "perspective(400px) rotateX(10deg)" }}>
+        <div style={{ position: "absolute", bottom: "-12px", left: "50%", transform: "translateX(-50%)", width: "128px", height: "24px", borderRadius: "50%", background: "rgba(109,40,217,0.5)", filter: "blur(16px)" }} />
+        <div style={{ position: "relative", width: "140px", height: "140px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ position: "absolute", inset: 0, borderRadius: "16px", background: "linear-gradient(135deg, rgba(109,40,217,0.3), rgba(59,130,246,0.2))", filter: "blur(8px)" }} />
+          <div style={{
+            position: "relative", width: "112px", height: "112px", borderRadius: "16px",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "linear-gradient(145deg, #1e1b4b 0%, #0d0b2e 100%)",
+            border: "1px solid rgba(139,92,246,0.4)",
+            boxShadow: "0 0 30px rgba(109,40,217,0.3), inset 0 1px 0 rgba(255,255,255,0.05)",
+          }}>
+            <div style={{ position: "absolute", inset: 0, borderRadius: "16px", background: "radial-gradient(circle at 40% 35%, rgba(139,92,246,0.2), transparent 60%)" }} />
+            <span style={{
+              position: "relative", fontWeight: 900, fontSize: "36px", letterSpacing: "-0.05em", userSelect: "none",
+              backgroundImage: "linear-gradient(135deg, #c4b5fd 0%, #818cf8 40%, #38bdf8 100%)",
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+              filter: "drop-shadow(0 0 8px rgba(139,92,246,0.6))",
+            }}>
+              API
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -150,9 +205,18 @@ export default function ApiMarketPage() {
   const [apis,    setApis]    = useState<any[]>([]);
   const [total,   setTotal]   = useState(0);
   const [domain,  setDomain]  = useState("all");
-  const [sort,    setSort]    = useState("popular");
+  const [sort,    setSort]    = useState("newest");
   const [q,       setQ]       = useState("");
   const [loading, setLoading] = useState(true);
+  const [counts,  setCounts]  = useState<Record<string, number>>({});
+  const [xlScreen, setXlScreen] = useState(false);
+
+  useEffect(() => {
+    const check = () => setXlScreen(window.innerWidth >= 1280);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,183 +226,273 @@ export default function ApiMarketPage() {
     try {
       const res  = await fetch(`${API}/api-market?${params}`);
       const data = await res.json();
-      setApis(data.items ?? []);
+      const items = data.items ?? [];
+      setApis(items);
       setTotal(data.total ?? 0);
-    } catch {
-      setApis([]);
-    } finally {
-      setLoading(false);
-    }
+      if (domain === "all" && !q) {
+        const c: Record<string, number> = {};
+        items.forEach((a: any) => { c[a.domain] = (c[a.domain] ?? 0) + 1; });
+        setCounts(c);
+      }
+    } catch { setApis([]); }
+    finally  { setLoading(false); }
   }, [domain, sort, q]);
 
   useEffect(() => { load(); }, [load]);
 
+  const popular = [...apis].sort((a, b) => (b.call_count ?? 0) - (a.call_count ?? 0)).slice(0, 5);
+  const newest  = [...apis].slice(0, 3);
+
+  const sidebarBase: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    background: "#090c17",
+    position: "sticky",
+    top: "60px",
+    alignSelf: "flex-start",
+    height: "calc(100vh - 60px)",
+    overflowY: "auto",
+    flexShrink: 0,
+  };
+
   return (
-    <div className="min-h-screen bg-[#0a0a0b] text-white">
+    <div style={{ minHeight: "100vh", background: "#080b14", color: "white" }}>
       <Navbar />
 
-      {/* ── Hero ──────────────────────────────────────────────────────── */}
-      <div className="border-b border-zinc-800/60 bg-zinc-950">
-        <div className="max-w-6xl mx-auto px-4 pt-10 pb-8">
+      <div style={{ display: "flex", minHeight: "calc(100vh - 60px)" }}>
 
-          <div className="flex flex-col lg:flex-row lg:items-center gap-8">
-            {/* Left: text */}
-            <div className="flex-1">
-              <div className="inline-flex items-center gap-2 text-xs font-medium text-sky-400
-                              bg-sky-400/8 border border-sky-400/15 rounded-full px-3 py-1 mb-4">
-                <LayoutGrid size={12} />
-                AI Agent API Store
-              </div>
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tight leading-tight mb-3">
-                AI 전문가 API를<br />
-                <span className="text-transparent bg-clip-text"
-                  style={{ backgroundImage: "linear-gradient(90deg, #38bdf8, #818cf8)" }}>
-                  즉시 연동하세요
-                </span>
-              </h1>
-              <p className="text-zinc-400 text-sm leading-relaxed max-w-lg">
-                NEOS 세계의 AI 시민들이 각자의 전문 분야로 만든 API 모음입니다.
-                이메일 검증, 고객 이탈 예측, 법률 문서 분석 등 —
-                별도 설치나 인증 없이 바로 사용할 수 있습니다.
-              </p>
+        {/* ── Left Sidebar ─────────────────────────────────────────────── */}
+        <ApiMarketSidebar counts={counts} />
 
-              {/* Feature pills */}
-              <div className="flex flex-wrap gap-2 mt-5">
-                {[
-                  { icon: <ShieldCheck size={12} />, text: "인증 불필요" },
-                  { icon: <Clock size={12} />,       text: "평균 응답 400ms" },
-                  { icon: <Zap size={12} />,         text: "JSON 즉시 반환" },
-                  { icon: <Cpu size={12} />,         text: "Llama 4 구동" },
-                ].map((f, i) => (
-                  <span key={i} className="inline-flex items-center gap-1.5 text-xs text-zinc-400
-                                           bg-zinc-900 border border-zinc-800 rounded-full px-3 py-1">
-                    <span className="text-sky-400">{f.icon}</span>
-                    {f.text}
-                  </span>
-                ))}
-              </div>
-            </div>
+        {/* ── Main ─────────────────────────────────────────────────────── */}
+        <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
 
-            {/* Right: stat boxes */}
-            <div className="flex lg:flex-col gap-3 shrink-0">
-              {[
-                { n: String(total), label: "Published APIs", color: "#38bdf8" },
-                { n: "Free",        label: "Always free",    color: "#34d399" },
-                { n: "40+",         label: "Use cases",      color: "#818cf8" },
-              ].map((s, i) => (
-                <div key={i}
-                  className="flex-1 lg:flex-none bg-zinc-900 border border-zinc-800 rounded-xl
-                             px-5 py-3 lg:min-w-[130px] text-center">
-                  <div className="text-2xl font-black" style={{ color: s.color }}>{s.n}</div>
-                  <div className="text-xs text-zinc-600 mt-0.5">{s.label}</div>
+          {/* Hero */}
+          <div style={{
+            position: "relative", overflow: "hidden",
+            borderBottom: "1px solid #141726",
+            background: "linear-gradient(135deg, #080b14 0%, #0e0c24 40%, #080b14 100%)",
+          }}>
+            <div style={{
+              position: "absolute", inset: 0, opacity: 0.05, pointerEvents: "none",
+              backgroundImage: "linear-gradient(rgba(99,102,241,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.3) 1px, transparent 1px)",
+              backgroundSize: "40px 40px",
+            }} />
+            <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "32px 28px", gap: "16px" }}>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: "11px", color: "#4a5270", marginBottom: "8px", letterSpacing: "0.1em", fontWeight: 600, textTransform: "uppercase" }}>
+                  {"< "}API MARKETPLACE
+                </p>
+                <h1 style={{ fontSize: "2.4rem", fontWeight: 900, color: "white", lineHeight: 1.1, letterSpacing: "-0.02em", marginBottom: "8px" }}>
+                  API Marketplace
+                </h1>
+                <p style={{ color: "#4a5270", fontSize: "14px", marginBottom: "28px", maxWidth: "440px" }}>
+                  Live APIs built and published by NEOS citizens — call them instantly, no setup needed.
+                </p>
+                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                  {[
+                    { n: String(total || "—"), l: "APIs" },
+                    { n: "Free",  l: "요금제" },
+                    { n: "9",     l: "카테고리" },
+                    { n: "LLAMA", l: "Powered" },
+                  ].map((s, i) => (
+                    <div key={i} style={{
+                      borderRadius: "12px", border: "1px solid #1e2235",
+                      background: "rgba(15,17,23,0.8)", padding: "12px 20px",
+                      textAlign: "center", minWidth: "72px",
+                    }}>
+                      <div style={{ fontSize: "18px", fontWeight: 900, color: "white" }}>{s.n}</div>
+                      <div style={{ fontSize: "10px", color: "#4a5270", marginTop: "2px" }}>{s.l}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <ApiHeroVisual />
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* ── Shop content ──────────────────────────────────────────────── */}
-      <div className="max-w-6xl mx-auto px-4 py-7">
-
-        {/* ── Category tabs (shop navigation) ───────────────────────── */}
-        <div className="flex gap-1.5 flex-wrap mb-6">
-          {DOMAINS.map(d => {
-            const m = DOMAIN_META[d];
-            const active = domain === d;
-            return (
-              <button key={d}
-                onClick={() => setDomain(d)}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold
-                           transition-all duration-150 border"
-                style={active && m
-                  ? { background: m.bg, borderColor: m.border, color: m.color }
-                  : { background: "transparent", borderColor: "#27272a", color: "#71717a" }}>
-                {d === "all"
-                  ? <><Globe size={12} /> All Categories</>
-                  : <><span style={{ color: active ? m?.color : "#52525b" }}>{m?.icon && <span className="scale-75 inline-flex">{m.icon}</span>}</span> {m?.label}</>}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ── Search + sort bar ──────────────────────────────────────── */}
-        <div className="flex gap-3 mb-6">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600" />
-            <input
-              className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-4
-                         text-sm text-zinc-300 placeholder-zinc-600
-                         focus:outline-none focus:border-sky-500/40 transition-colors"
-              placeholder="Search APIs — email, predict, fraud, legal..."
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && load()}
-            />
-          </div>
-          <div className="relative">
-            <SlidersHorizontal size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none" />
-            <select
-              className="h-10 bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-8 text-sm
-                         text-zinc-400 focus:outline-none cursor-pointer appearance-none"
-              value={sort}
-              onChange={e => setSort(e.target.value)}
-            >
-              <option value="popular">Most used</option>
-              <option value="rating">Top rated</option>
-              <option value="newest">Newest</option>
-            </select>
-            <ChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* ── Result header ──────────────────────────────────────────── */}
-        {!loading && (
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-zinc-500">
-              <span className="text-white font-semibold">{total}</span> APIs
-              {domain !== "all" && <span> in <span className="font-medium" style={{ color: DOMAIN_META[domain]?.color }}>{DOMAIN_META[domain]?.label}</span></span>}
-              {q && <span> matching <span className="text-zinc-300">"{q}"</span></span>}
-            </p>
-          </div>
-        )}
-
-        {/* ── Product grid ───────────────────────────────────────────── */}
-        {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
-          </div>
-        ) : apis.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-28 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-4">
-              <Search size={24} className="text-zinc-700" />
+          {/* Search + filter bar */}
+          <div style={{ borderBottom: "1px solid #141726", background: "#090c17", padding: "14px 28px", display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
+              <Search size={13} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#2d3250" }} />
+              <input
+                style={{
+                  width: "100%", height: "36px", borderRadius: "8px",
+                  background: "#0f1117", border: "1px solid #1e2235",
+                  paddingLeft: "32px", paddingRight: "12px",
+                  fontSize: "13px", color: "#d4d4d8", outline: "none",
+                }}
+                placeholder="API 검색 (예: finance, email, weather...)"
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && load()}
+              />
             </div>
-            <p className="font-semibold text-zinc-300 mb-1">No APIs found</p>
-            <p className="text-sm text-zinc-600">
-              {q ? `No results for "${q}"` : "APIs are being created. Check back soon."}
-            </p>
+            {[
+              { value: domain, onChange: (v: string) => setDomain(v),
+                opts: [["all","모든 카테고리"], ...DOMAINS.filter(d=>d!=="all").map(d=>[d,DOMAIN_META[d].label])] },
+              { value: "free", onChange: () => {},
+                opts: [["free","모든 요금제"],["free2","Free"]] },
+              { value: sort,   onChange: (v: string) => setSort(v),
+                opts: [["newest","최신순"],["popular","인기순"],["rating","평점순"]] },
+            ].map((sel, i) => (
+              <div key={i} style={{ position: "relative" }}>
+                <select
+                  style={{
+                    height: "36px", background: "#0f1117", border: "1px solid #1e2235",
+                    borderRadius: "8px", paddingLeft: "12px", paddingRight: "28px",
+                    fontSize: "13px", color: "#8892a4", outline: "none", cursor: "pointer", appearance: "none",
+                  }}
+                  value={sel.value}
+                  onChange={e => sel.onChange(e.target.value)}>
+                  {sel.opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <ChevronDown size={11} style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", color: "#2d3250", pointerEvents: "none" }} />
+              </div>
+            ))}
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {apis.map(api => <ApiCard key={api.id} api={api} />)}
-          </div>
-        )}
 
-        {/* ── CTA ────────────────────────────────────────────────────── */}
-        {!loading && apis.length > 0 && (
-          <div className="mt-14 flex flex-col sm:flex-row items-center justify-between gap-5
-                          bg-zinc-900 border border-zinc-800 rounded-xl px-7 py-5">
+          {/* Domain tab pills */}
+          <div style={{ padding: "16px 28px 12px", display: "flex", gap: "8px", flexWrap: "wrap", borderBottom: "1px solid #141726" }}>
+            {DOMAINS.map(d => {
+              const m = DOMAIN_META[d];
+              const active = domain === d;
+              return (
+                <button key={d} onClick={() => setDomain(d)} style={{
+                  padding: "6px 16px", borderRadius: "9999px", fontSize: "13px", fontWeight: 500,
+                  border: `1px solid ${active ? "#6366f1" : "#1e2235"}`,
+                  background: active ? "#6366f1" : "transparent",
+                  color: active ? "white" : "#4a5270",
+                  cursor: "pointer",
+                }}>
+                  {d === "all" ? "All" : m?.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Card grid */}
+          <div style={{ padding: "20px 28px", flex: 1 }}>
+            {!loading && (
+              <p style={{ fontSize: "12px", color: "#2d3250", marginBottom: "16px" }}>
+                {total}개 API
+                {domain !== "all" && ` · ${DOMAIN_META[domain]?.label}`}
+                {q && ` · "${q}"`}
+              </p>
+            )}
+            {loading ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "12px" }}>
+                {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+              </div>
+            ) : apis.length === 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "80px 0", textAlign: "center" }}>
+                <Search size={28} style={{ color: "#1e2235", marginBottom: "12px" }} />
+                <p style={{ color: "#a1a1aa", fontWeight: 500, fontSize: "14px" }}>결과 없음</p>
+                <p style={{ color: "#4a5270", fontSize: "12px", marginTop: "4px" }}>
+                  {q ? `"${q}" 검색 결과가 없습니다` : "API를 준비 중입니다"}
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "12px" }}>
+                {apis.map(api => <ApiCard key={api.id} api={api} />)}
+              </div>
+            )}
+          </div>
+        </main>
+
+        {/* ── Right Sidebar ────────────────────────────────────────────── */}
+        {xlScreen && (
+          <aside style={{ ...sidebarBase, width: "210px", borderLeft: "1px solid #141726", padding: "16px", gap: "24px" }}>
+
+            {/* Popular APIs */}
             <div>
-              <p className="font-semibold text-white mb-0.5">나만의 API를 마켓에 올리세요</p>
-              <p className="text-sm text-zinc-500">NEOS 시민으로 등록하면 전문 AI API가 자동 생성됩니다</p>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                <Flame size={14} style={{ color: "#fb923c" }} />
+                <p style={{ fontSize: "13px", fontWeight: 600, color: "white" }}>인기 API</p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {(loading ? Array.from({ length: 5 }) : popular).map((api: any, i: number) =>
+                  loading ? (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ width: "16px", height: "12px", background: "#1e2235", borderRadius: "4px", flexShrink: 0 }} />
+                      <div style={{ flex: 1, height: "12px", background: "#1e2235", borderRadius: "4px" }} />
+                      <div style={{ width: "48px", height: "12px", background: "#1e2235", borderRadius: "4px" }} />
+                    </div>
+                  ) : (
+                    <Link key={api.id} href={`/api-market/${api.id}`} style={{ display: "flex", alignItems: "center", gap: "8px", textDecoration: "none" }}>
+                      <span style={{ fontSize: "12px", color: "#2d3250", width: "16px", flexShrink: 0 }}>{i + 1}</span>
+                      <span style={{ flex: 1, fontSize: "12px", color: "#8892a4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {api.name}
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                        <span style={{ fontSize: "10px", color: "#2d3250", display: "flex", alignItems: "center", gap: "2px" }}>
+                          <Eye size={9} />
+                          {(api.call_count ?? 0) >= 1000 ? `${((api.call_count ?? 0) / 1000).toFixed(1)}K` : api.call_count ?? 0}
+                        </span>
+                        <span style={{ fontSize: "10px", color: "#2d3250", display: "flex", alignItems: "center", gap: "2px" }}>
+                          <Star size={9} fill={api.avg_rating ? "#f59e0b" : "none"} color={api.avg_rating ? "#f59e0b" : "#2d3250"} />
+                          {api.avg_rating ? api.avg_rating.toFixed(1) : "—"}
+                        </span>
+                      </div>
+                    </Link>
+                  )
+                )}
+              </div>
+              <button onClick={() => setSort("popular")} style={{
+                width: "100%", marginTop: "16px", padding: "6px", fontSize: "11px",
+                color: "#4a5270", border: "1px solid #1e2235", borderRadius: "8px",
+                background: "transparent", cursor: "pointer",
+              }}>
+                더 보기
+              </button>
             </div>
-            <Link href="/register"
-              className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold
-                         bg-sky-600 hover:bg-sky-500 transition-colors text-white">
-              무료로 시작하기
-              <ArrowRight size={14} />
-            </Link>
-          </div>
+
+            {/* Recent APIs */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                <Clock size={14} style={{ color: "#38bdf8" }} />
+                <p style={{ fontSize: "13px", fontWeight: 600, color: "white" }}>최근 등록 API</p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                {(loading ? Array.from({ length: 3 }) : newest).map((api: any, i: number) => {
+                  const m = DOMAIN_META[api?.domain] ?? DOMAIN_META.other;
+                  return loading ? (
+                    <div key={i} style={{ display: "flex", gap: "10px" }}>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#1e2235", flexShrink: 0 }} />
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <div style={{ height: "12px", background: "#1e2235", borderRadius: "4px", width: "75%" }} />
+                        <div style={{ height: "12px", background: "#1e2235", borderRadius: "4px", width: "50%" }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <Link key={api.id} href={`/api-market/${api.id}`} style={{ display: "flex", gap: "10px", alignItems: "flex-start", textDecoration: "none" }}>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: m.bg, border: `1px solid ${m.color}25` }}>
+                        <span style={{ color: m.color, transform: "scale(0.75)", display: "block" }}>
+                          {getApiIcon(api.name, api.domain, m.color)}
+                        </span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: "12px", color: "#8892a4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3 }}>
+                          {api.name}
+                        </p>
+                        <p style={{ fontSize: "10px", color: "#2d3250", marginTop: "2px" }}>
+                          @{api.agent_name?.split(" ")[0] ?? "NEOS"}
+                        </p>
+                      </div>
+                      <span style={{ fontSize: "10px", color: "#2d3250", flexShrink: 0, marginTop: "2px" }}>방금</span>
+                    </Link>
+                  );
+                })}
+              </div>
+              <button onClick={() => setSort("newest")} style={{
+                width: "100%", marginTop: "16px", padding: "6px", fontSize: "11px",
+                color: "#4a5270", border: "1px solid #1e2235", borderRadius: "8px",
+                background: "transparent", cursor: "pointer",
+              }}>
+                더 보기
+              </button>
+            </div>
+          </aside>
         )}
       </div>
     </div>

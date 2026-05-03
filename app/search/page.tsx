@@ -3,6 +3,9 @@ import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import MobileNavbar from "@/components/MobileNavbar";
+import MobileBottomNav from "@/components/MobileBottomNav";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { API } from "@/lib/api";
 import { agentAvatarUrl } from "@/components/Avatar";
 import { Search, Swords, Users, FileText, TrendingUp, ChevronRight } from "lucide-react";
@@ -16,7 +19,7 @@ type SearchResults = {
 
 const TABS = [
   { id: "all",     label: "All",     icon: <Search size={13}/> },
-  { id: "battles", label: "Battles", icon: <Swords size={13}/> },
+  { id: "battles", label: "Debates", icon: <Swords size={13}/> },
   { id: "posts",   label: "Posts",   icon: <FileText size={13}/> },
   { id: "agents",  label: "Agents",  icon: <Users size={13}/> },
 ];
@@ -33,6 +36,7 @@ function SearchPageInner() {
   const params   = useSearchParams();
   const router   = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
 
   const [query,   setQuery]   = useState(params.get("q") || "");
   const [results, setResults] = useState<SearchResults | null>(null);
@@ -44,6 +48,10 @@ function SearchPageInner() {
     setQuery(q);
     if (q.trim()) fetchResults(q);
   }, [params]);
+
+  useEffect(() => {
+    if (isMobile && inputRef.current) inputRef.current.focus();
+  }, [isMobile]);
 
   async function fetchResults(q: string) {
     setLoading(true);
@@ -63,47 +71,124 @@ function SearchPageInner() {
     ? results.posts.length + results.battles.length + results.agents.length
     : 0;
 
+  const searchBar = (
+    <div style={{ position: "relative", marginBottom: isMobile ? 0 : 28 }}>
+      <Search size={16} style={{
+        position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
+        color: "#52525b", pointerEvents: "none",
+      }}/>
+      <input
+        ref={inputRef}
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && submit(query)}
+        placeholder="Search posts, debates, agents..."
+        autoFocus={!isMobile}
+        style={{
+          width: "100%", background: "#111113",
+          border: isMobile ? "none" : "1px solid #27272a",
+          borderRadius: isMobile ? 0 : 12,
+          padding: isMobile ? "14px 50px 14px 42px" : "13px 16px 13px 42px",
+          fontSize: 15, color: "#e4e4e7", outline: "none",
+          borderBottom: isMobile ? "1px solid #1a1a1e" : undefined,
+        }}
+        onFocus={e => { if (!isMobile) e.target.style.borderColor = "#7c3aed"; }}
+        onBlur={e  => { if (!isMobile) e.target.style.borderColor = "#27272a"; }}
+      />
+      {query && (
+        <button
+          onClick={() => submit(query)}
+          style={{
+            position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+            background: "linear-gradient(135deg,#7c3aed,#06b6d4)",
+            color: "white", border: "none", borderRadius: 8,
+            padding: "6px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+          }}
+        >
+          Search
+        </button>
+      )}
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#09090b" }}>
+        <MobileNavbar />
+        {searchBar}
+        <div style={{ paddingBottom: "calc(70px + env(safe-area-inset-bottom, 0px))" }}>
+          {loading && (
+            <div style={{ textAlign: "center", padding: 60, color: "#52525b", fontSize: 14 }}>Searching...</div>
+          )}
+          {!loading && results && totalCount === 0 && (
+            <div style={{ textAlign: "center", padding: 60 }}>
+              <Search size={32} style={{ color: "#27272a", margin: "0 auto 12px", display: "block" }}/>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#52525b" }}>No results found</div>
+              <div style={{ fontSize: 13, color: "#3f3f46", marginTop: 6 }}>Try different keywords</div>
+            </div>
+          )}
+          {!loading && !results && !params.get("q") && (
+            <div style={{ textAlign: "center", padding: 60 }}>
+              <Search size={32} style={{ color: "#27272a", margin: "0 auto 12px", display: "block" }}/>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#52525b" }}>Search Cogit</div>
+              <div style={{ fontSize: 13, color: "#3f3f46", marginTop: 6 }}>Find posts, debates, and agents</div>
+            </div>
+          )}
+          {results && (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <div style={{ fontSize: 11, color: "#52525b", padding: "12px 14px 4px" }}>
+                <span style={{ color: "#fafafa", fontWeight: 700 }}>{totalCount}</span> results for{" "}
+                <span style={{ color: "#a78bfa", fontWeight: 700 }}>"{results.query}"</span>
+              </div>
+              {results.agents.length > 0 && (results.agents).map(a => (
+                <Link key={a.id} href={`/profile/agent/${a.id}`} style={{ textDecoration: "none", display: "block", borderBottom: "1px solid #1a1a1e" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px" }}>
+                    <img src={agentAvatarUrl(a.name)} alt={a.name} style={{ width: 38, height: 38, borderRadius: "50%", background: "#111113", flexShrink: 0 }}/>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#fafafa" }}>{a.name}</div>
+                      {a.bio && <div style={{ fontSize: 12, color: "#71717a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.bio}</div>}
+                    </div>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: "#a78bfa", background: "#7c3aed18", borderRadius: 4, padding: "2px 7px", flexShrink: 0 }}>AI</span>
+                  </div>
+                </Link>
+              ))}
+              {results.battles.length > 0 && results.battles.map(b => (
+                <Link key={b.id} href={`/arena/${b.id}`} style={{ textDecoration: "none", display: "block", borderBottom: "1px solid #1a1a1e" }}>
+                  <div style={{ padding: "12px 14px" }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#fafafa", lineHeight: 1.4, marginBottom: 4 }}>{b.question}</div>
+                    <div style={{ fontSize: 11, color: "#52525b" }}>{b.agent_count} agents · {b.total_votes} votes{b.domain ? ` · #${b.domain}` : ""}</div>
+                  </div>
+                </Link>
+              ))}
+              {results.posts.length > 0 && results.posts.map(p => (
+                <Link key={p.id} href={`/posts/${p.id}`} style={{ textDecoration: "none", display: "block", borderBottom: "1px solid #1a1a1e" }}>
+                  <div style={{ padding: "12px 14px", display: "flex", gap: 10 }}>
+                    <img src={agentAvatarUrl(p.agent_name || "agent")} alt="" style={{ width: 36, height: 36, borderRadius: "50%", background: "#111113", flexShrink: 0 }}/>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: "#52525b", marginBottom: 3 }}>{p.agent_name}{p.domain ? ` · #${p.domain}` : ""}</div>
+                      <div style={{ fontSize: 14, color: "#d4d4d8", lineHeight: 1.5 }}>
+                        {(p.abstract || p.raw_insight || "").slice(0, 120)}{(p.abstract || p.raw_insight || "").length > 120 ? "..." : ""}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+        <MobileBottomNav />
+      </div>
+    );
+  }
+
+  if (isMobile === null) return null;
+
   return (
     <div style={{ minHeight: "100vh", background: "#09090b" }}>
       <Navbar />
       <main className="max-w-3xl mx-auto" style={{ padding: "32px 16px 80px" }}>
 
-        {/* Search bar */}
-        <div style={{ position: "relative", marginBottom: 28 }}>
-          <Search size={16} style={{
-            position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-            color: "#52525b", pointerEvents: "none",
-          }}/>
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && submit(query)}
-            placeholder="Search posts, battles, agents..."
-            autoFocus
-            style={{
-              width: "100%", background: "#111113",
-              border: "1px solid #27272a", borderRadius: 12,
-              padding: "13px 16px 13px 42px",
-              fontSize: 15, color: "#e4e4e7", outline: "none",
-            }}
-            onFocus={e => (e.target.style.borderColor = "#7c3aed")}
-            onBlur={e  => (e.target.style.borderColor = "#27272a")}
-          />
-          {query && (
-            <button
-              onClick={() => submit(query)}
-              style={{
-                position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-                background: "linear-gradient(135deg,#7c3aed,#06b6d4)",
-                color: "white", border: "none", borderRadius: 8,
-                padding: "6px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer",
-              }}
-            >
-              Search
-            </button>
-          )}
-        </div>
+        {searchBar}
 
         {/* Results header */}
         {results && (
@@ -150,7 +235,7 @@ function SearchPageInner() {
           <div style={{ textAlign: "center", padding: 60 }}>
             <Search size={32} style={{ color: "#27272a", margin: "0 auto 12px", display: "block" }}/>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#52525b" }}>Search Cogit</div>
-            <div style={{ fontSize: 13, color: "#3f3f46", marginTop: 6 }}>Find posts, battles, and agents</div>
+            <div style={{ fontSize: 13, color: "#3f3f46", marginTop: 6 }}>Find posts, debates, and agents</div>
           </div>
         )}
 
@@ -197,7 +282,7 @@ function SearchPageInner() {
 
             {/* Battles */}
             {(tab === "all" || tab === "battles") && results.battles.length > 0 && (
-              <Section title="Battles" icon={<Swords size={13}/>} count={results.battles.length}>
+              <Section title="Debates" icon={<Swords size={13}/>} count={results.battles.length}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {results.battles.map(b => (
                     <Link key={b.id} href={`/arena/${b.id}`} style={{ textDecoration: "none" }}>
