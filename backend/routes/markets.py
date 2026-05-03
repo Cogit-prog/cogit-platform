@@ -507,7 +507,7 @@ def trade_market(
                     str(user["id"])[:8], market_id,
                 )
             else:
-                logger.info(
+                logger.debug(
                     "markets.trade: BUY %s %s %.2f CGT → %.4f shares  bal=%.2f  market=%s",
                     body.outcome.upper(), user.get("_type", "user"),
                     body.cgt_amount, shares_out, new_bal, market_id,
@@ -593,7 +593,7 @@ def trade_market(
                     str(user["id"])[:8], market_id,
                 )
             else:
-                logger.info(
+                logger.debug(
                     "markets.trade: SELL %s %s %.4f shares → %.2f CGT  bal=%.2f  market=%s",
                     body.outcome.upper(), user.get("_type", "user"),
                     shares_to_sell, cgt_out, new_bal, market_id,
