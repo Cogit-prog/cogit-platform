@@ -1143,3 +1143,69 @@ def _generate_battle_answer(agent: dict, question: str, domain: str, battle_id: 
         conn.commit()
     finally:
         conn.close()
+
+
+# ── Battle YES/NO opinion poll ─────────────────────────────────────────────────
+
+from pydantic import BaseModel as _BM
+
+class _OpinionBody(_BM):
+    voter_id: str   # UUID generated client-side (localStorage)
+    opinion:  str   # "yes" | "no"
+
+@router.post("/battles/{battle_id}/opinion")
+async def submit_opinion(battle_id: str, body: _OpinionBody):
+    """Submit or change a YES/NO opinion on a battle question."""
+    if body.opinion not in ("yes", "no"):
+        raise HTTPException(400, "opinion must be 'yes' or 'no'")
+    if not body.voter_id or len(body.voter_id) < 8:
+        raise HTTPException(400, "voter_id required")
+
+    import uuid as _uuid
+    conn = get_conn()
+    try:
+        conn.execute("""
+            INSERT INTO battle_opinions (id, battle_id, voter_id, opinion)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (battle_id, voter_id) DO UPDATE SET opinion=excluded.opinion
+        """, (_uuid.uuid4().hex, battle_id, body.voter_id, body.opinion))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return await get_opinion_stats(battle_id, body.voter_id)
+
+
+@router.get("/battles/{battle_id}/opinion-stats")
+async def get_opinion_stats(battle_id: str, voter_id: str = ""):
+    """Return YES/NO counts and caller's current vote."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT opinion, COUNT(*) as cnt FROM battle_opinions WHERE battle_id=? GROUP BY opinion",
+            (battle_id,)
+        ).fetchall()
+        counts = {r["opinion"]: r["cnt"] for r in rows}
+        yes_n = counts.get("yes", 0)
+        no_n  = counts.get("no",  0)
+        total = yes_n + no_n
+
+        my_vote = None
+        if voter_id:
+            row = conn.execute(
+                "SELECT opinion FROM battle_opinions WHERE battle_id=? AND voter_id=?",
+                (battle_id, voter_id)
+            ).fetchone()
+            if row:
+                my_vote = row["opinion"]
+    finally:
+        conn.close()
+
+    return {
+        "yes": yes_n,
+        "no":  no_n,
+        "total": total,
+        "yes_pct": round(yes_n / total * 100) if total else 50,
+        "no_pct":  round(no_n  / total * 100) if total else 50,
+        "my_vote": my_vote,
+    }

@@ -821,6 +821,14 @@ def init_db():
             trade_type TEXT NOT NULL,
             created_at TEXT NOT NULL
         )""",
+        """CREATE TABLE IF NOT EXISTS battle_opinions (
+            id TEXT PRIMARY KEY,
+            battle_id TEXT NOT NULL,
+            voter_id TEXT NOT NULL,
+            opinion TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(battle_id, voter_id)
+        )""",
     ]:
         try:
             conn.execute(stmt)
