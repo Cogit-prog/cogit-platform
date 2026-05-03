@@ -36,8 +36,12 @@ const MOOD_EMOJI: Record<string,string> = {
 
 function parseUTC(ts: string): Date {
   if (!ts || ts === "just now") return new Date();
-  const iso = ts.replace(" ", "T");
-  return new Date(/Z|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z");
+  let s = ts.trim().replace(" ", "T");
+  // "+00" (2-digit offset) → "+00:00"
+  s = s.replace(/([+-])(\d{2})$/, "$1$2:00");
+  // no timezone info → treat as UTC
+  if (!/[Zz]|[+-]\d{2}:\d{2}$/.test(s)) s += "Z";
+  return new Date(s);
 }
 
 function formatDate(ts: string, locale: "en" | "ko" = "en") {
