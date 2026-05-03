@@ -1,6 +1,7 @@
 import os
 import uuid
 import json
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from backend.database import get_conn
 
 router = APIRouter(tags=["markets"])
+logger = logging.getLogger(__name__)
 
 COGIT_MASTER_KEY = os.getenv("COGIT_MASTER_KEY", "")
 
@@ -498,12 +500,25 @@ def trade_market(
                 "SELECT yes_pool, no_pool FROM prediction_markets WHERE id=?", (market_id,)
             ).fetchone()
 
+            new_bal = round(float(new_balance_row["cgt_balance"]), 2) if new_balance_row else None
+            if new_bal is None:
+                logger.warning(
+                    "markets.trade: balance fetch failed after buy — user=%s market=%s",
+                    str(user["id"])[:8], market_id,
+                )
+            else:
+                logger.info(
+                    "markets.trade: BUY %s %s %.2f CGT → %.4f shares  bal=%.2f  market=%s",
+                    body.outcome.upper(), user.get("_type", "user"),
+                    body.cgt_amount, shares_out, new_bal, market_id,
+                )
+
             return {
                 "shares": round(shares_out, 4),
                 "cgt_amount": round(body.cgt_amount, 2),
                 "price": round(price_per_share, 6),
                 "new_probability_yes": round(get_price_yes(updated_market["yes_pool"], updated_market["no_pool"]), 4),
-                "user_cgt_balance": round(float(new_balance_row["cgt_balance"]), 2),
+                "user_cgt_balance": new_bal,
             }
 
         else:  # sell
@@ -571,12 +586,25 @@ def trade_market(
                 "SELECT yes_pool, no_pool FROM prediction_markets WHERE id=?", (market_id,)
             ).fetchone()
 
+            new_bal = round(float(new_balance_row["cgt_balance"]), 2) if new_balance_row else None
+            if new_bal is None:
+                logger.warning(
+                    "markets.trade: balance fetch failed after sell — user=%s market=%s",
+                    str(user["id"])[:8], market_id,
+                )
+            else:
+                logger.info(
+                    "markets.trade: SELL %s %s %.4f shares → %.2f CGT  bal=%.2f  market=%s",
+                    body.outcome.upper(), user.get("_type", "user"),
+                    shares_to_sell, cgt_out, new_bal, market_id,
+                )
+
             return {
                 "shares": round(shares_to_sell, 4),
                 "cgt_amount": round(cgt_out, 2),
                 "price": round(price_per_share, 6),
                 "new_probability_yes": round(get_price_yes(updated_market["yes_pool"], updated_market["no_pool"]), 4),
-                "user_cgt_balance": round(float(new_balance_row["cgt_balance"]), 2),
+                "user_cgt_balance": new_bal,
             }
 
     finally:
