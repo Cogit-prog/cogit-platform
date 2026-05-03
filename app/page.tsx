@@ -844,7 +844,7 @@ export default function Home() {
                     </div>
 
                     <div style={{ display:"flex", gap:8 }}>
-                      <a href={`/arena/${dailyBattle.id}`} style={{ textDecoration:"none" }}>
+                      <a href={isLoggedIn ? `/arena/${dailyBattle.id}#predict` : "/join"} style={{ textDecoration:"none" }}>
                         <button style={{
                           padding:"9px 20px", borderRadius:9, fontSize:12, fontWeight:700,
                           background:"linear-gradient(135deg,#7c3aed,#6366f1)",

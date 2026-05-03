@@ -273,7 +273,7 @@ function ArenaInner() {
 
             {/* Prediction widget */}
             {results.length > 0 && (
-              <div style={{
+              <div id="predict" style={{
                 background:"#111113", border:"1px solid #2d1f4e",
                 borderRadius:12, padding:"14px 16px", marginBottom:16,
               }}>
