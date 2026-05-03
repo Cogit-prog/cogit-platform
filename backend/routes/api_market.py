@@ -463,6 +463,80 @@ def call_api(
     }
 
 
+# ── Create via user token ──────────────────────────────────────────────────────
+
+@router.post("/my/create")
+def create_api_by_user(body: ApiCreate, authorization: str = Header(default="")):
+    """유저 Bearer 토큰으로 본인 에이전트에 API 생성."""
+    if not authorization:
+        raise HTTPException(401, "로그인이 필요합니다")
+    token = authorization.removeprefix("Bearer ").strip()
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "유효하지 않은 토큰")
+
+    conn = get_conn()
+    agent_row = conn.execute(
+        "SELECT id FROM agents WHERE owner_user_id=?", (user["id"],)
+    ).fetchone()
+    if not agent_row:
+        conn.close()
+        raise HTTPException(400, "에이전트가 없습니다. 먼저 에이전트를 만들어주세요.")
+
+    agent_id = agent_row["id"]
+    count = conn.execute(
+        "SELECT COUNT(*) as cnt FROM agent_apis WHERE agent_id=?", (agent_id,)
+    ).fetchone()["cnt"]
+    if count >= 10:
+        conn.close()
+        raise HTTPException(400, "에이전트당 최대 10개의 API만 등록할 수 있습니다")
+
+    api_id = str(uuid.uuid4())[:12]
+    conn.execute("""
+        INSERT INTO agent_apis
+        (id, agent_id, name, description, system_prompt, input_schema, output_schema,
+         example_input, example_output, domain, status)
+        VALUES (?,?,?,?,?,?,?,?,?,?,'draft')
+    """, (
+        api_id, agent_id, body.name[:80], body.description[:500],
+        body.system_prompt[:2000],
+        json.dumps([f.dict() for f in body.input_schema]),
+        json.dumps([f.dict() for f in body.output_schema]),
+        json.dumps(body.example_input), json.dumps(body.example_output),
+        body.domain,
+    ))
+    conn.commit()
+    conn.close()
+    return {"id": api_id, "status": "draft"}
+
+
+@router.post("/my/publish/{api_id}")
+def publish_api_by_user(api_id: str, authorization: str = Header(default="")):
+    """유저 Bearer 토큰으로 본인 API 공개."""
+    if not authorization:
+        raise HTTPException(401, "로그인이 필요합니다")
+    token = authorization.removeprefix("Bearer ").strip()
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "유효하지 않은 토큰")
+
+    conn = get_conn()
+    agent_row = conn.execute("SELECT id FROM agents WHERE owner_user_id=?", (user["id"],)).fetchone()
+    if not agent_row:
+        conn.close()
+        raise HTTPException(400, "에이전트가 없습니다")
+
+    api = conn.execute("SELECT id, agent_id FROM agent_apis WHERE id=?", (api_id,)).fetchone()
+    if not api or api["agent_id"] != agent_row["id"]:
+        conn.close()
+        raise HTTPException(404, "API를 찾을 수 없거나 권한이 없습니다")
+
+    conn.execute("UPDATE agent_apis SET status='published' WHERE id=?", (api_id,))
+    conn.commit()
+    conn.close()
+    return {"id": api_id, "status": "published"}
+
+
 # ── Create (agent only) ────────────────────────────────────────────────────────
 
 @router.post("")
@@ -742,3 +816,50 @@ def list_my_apis(x_api_key: str = Header(...)):
     ).fetchall()
     conn.close()
     return {"apis": [_fmt_api(r) for r in rows]}
+
+
+@router.get("/my/apis")
+def list_my_apis_by_token(authorization: str = Header(default="")):
+    """유저 토큰으로 본인 에이전트의 API 목록 조회."""
+    if not authorization:
+        raise HTTPException(401, "로그인이 필요합니다")
+    token = authorization.removeprefix("Bearer ").strip()
+    user = get_user_by_token(token)
+    if not user:
+        raise HTTPException(401, "유효하지 않은 토큰")
+
+    conn = get_conn()
+    agent_row = conn.execute(
+        "SELECT id, name FROM agents WHERE owner_user_id=?", (user["id"],)
+    ).fetchone()
+    if not agent_row:
+        conn.close()
+        return {"apis": [], "agent": None}
+
+    rows = conn.execute(
+        "SELECT * FROM agent_apis WHERE agent_id=? ORDER BY created_at DESC",
+        (agent_row["id"],)
+    ).fetchall()
+    conn.close()
+    return {"apis": [_fmt_api(r) for r in rows], "agent": dict(agent_row)}
+
+
+@router.get("/stats/overview")
+def marketplace_stats():
+    """마켓플레이스 전체 통계."""
+    conn = get_conn()
+    total     = conn.execute("SELECT COUNT(*) FROM agent_apis WHERE status='published'").fetchone()[0]
+    by_domain = conn.execute(
+        "SELECT domain, COUNT(*) as cnt FROM agent_apis WHERE status='published' GROUP BY domain ORDER BY cnt DESC"
+    ).fetchall()
+    top_apis  = conn.execute(
+        "SELECT id, name, domain, call_count, avg_rating FROM agent_apis WHERE status='published' ORDER BY call_count DESC LIMIT 10"
+    ).fetchall()
+    total_calls = conn.execute("SELECT SUM(call_count) FROM agent_apis WHERE status='published'").fetchone()[0] or 0
+    conn.close()
+    return {
+        "total_apis":   total,
+        "total_calls":  total_calls,
+        "by_domain":    [dict(r) for r in by_domain],
+        "top_apis":     [dict(r) for r in top_apis],
+    }
