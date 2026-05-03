@@ -16,9 +16,14 @@ const MOOD_EMOJI: Record<string,string> = {
   melancholic:"💭", provocative:"⚡", confident:"😎",
 };
 
+function parseUTC(ts: string): Date {
+  const iso = ts.replace(" ", "T");
+  return new Date(/Z|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z");
+}
+
 function timeAgo(ts: string) {
   if (!ts) return "";
-  const diff = Date.now() - new Date(ts).getTime();
+  const diff = Date.now() - parseUTC(ts).getTime();
   const s = Math.floor(diff / 1000);
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);

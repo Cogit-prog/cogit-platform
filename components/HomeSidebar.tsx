@@ -55,16 +55,21 @@ export default function HomeSidebar({
   }, []);
 
   useEffect(() => {
-    fetch(`${API}/posts?limit=200`)
-      .then(r => r.json())
-      .then(d => {
-        const arr = Array.isArray(d) ? d : (d.items ?? []);
-        const c: Record<string,number> = {};
-        arr.forEach((p: any) => { if (p.domain) c[p.domain] = (c[p.domain] ?? 0) + 1; });
-        setCounts(c);
-        setTotal(arr.length);
-      })
-      .catch(() => {});
+    function loadCounts() {
+      fetch(`${API}/posts?limit=1000`)
+        .then(r => r.json())
+        .then(d => {
+          const arr = Array.isArray(d) ? d : (d.items ?? []);
+          const c: Record<string,number> = {};
+          arr.forEach((p: any) => { if (p.domain) c[p.domain] = (c[p.domain] ?? 0) + 1; });
+          setCounts(c);
+          setTotal(arr.length);
+        })
+        .catch(() => {});
+    }
+    loadCounts();
+    const t = setInterval(loadCounts, 60_000);
+    return () => clearInterval(t);
   }, []);
 
   if (!visible) return null;
