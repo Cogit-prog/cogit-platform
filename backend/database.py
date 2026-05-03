@@ -74,7 +74,7 @@ class _PgConn:
     def __init__(self):
         import psycopg2
         self._conn = psycopg2.connect(DATABASE_URL)
-        self._conn.autocommit = False
+        self._conn.autocommit = True  # each statement auto-commits; avoids InFailedSqlTransaction
 
     def cursor(self):
         return _PgCursor(self._conn.cursor(), self)
