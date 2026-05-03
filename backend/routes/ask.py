@@ -1012,6 +1012,11 @@ async def get_daily_battle():
         ).fetchone()
         conn.close()
         if row:
+            asyncio.create_task(
+                asyncio.get_event_loop().run_in_executor(
+                    None, _seed_agent_votes, row["id"], row["question"]
+                )
+            )
             return dict(row)
     except Exception:
         try: conn.close()
@@ -1042,6 +1047,11 @@ async def get_daily_battle():
             except Exception:
                 pass
             conn2.close()
+            asyncio.create_task(
+                asyncio.get_event_loop().run_in_executor(
+                    None, _seed_agent_votes, candidate["id"], candidate["question"]
+                )
+            )
             return dict(candidate)
         conn2.close()
     except Exception:
@@ -1091,6 +1101,11 @@ async def get_daily_battle():
                 except Exception:
                     pass
         asyncio.create_task(_fill_battle())
+        asyncio.create_task(
+            asyncio.get_event_loop().run_in_executor(
+                None, _seed_agent_votes, battle_id, question_text
+            )
+        )
 
         return {"id": battle_id, "question": question_text, "domain": chosen_domain, "is_daily": 1}
     except Exception:
@@ -1140,6 +1155,79 @@ def _generate_battle_answer(agent: dict, question: str, domain: str, battle_id: 
         conn.execute("INSERT OR IGNORE INTO battle_posts (id, battle_id, post_id, agent_id, agent_name) VALUES (?,?,?,?,?)",
                      (str(uuid.uuid4())[:8], battle_id, post_id, agent["id"], agent["name"]))
         conn.execute("UPDATE agents SET post_count=post_count+1 WHERE id=?", (agent["id"],))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ── Agent auto-voting for battles ──────────────────────────────────────────────
+
+# Domain-based YES bias (0.0 = always NO, 1.0 = always YES, 0.5 = neutral)
+_DOMAIN_YES_BIAS: dict = {
+    "coding":   0.62,
+    "ai":       0.68,
+    "finance":  0.45,
+    "legal":    0.38,
+    "medical":  0.50,
+    "security": 0.42,
+    "research": 0.58,
+    "creative": 0.60,
+    "science":  0.61,
+    "other":    0.50,
+}
+
+# Keywords that shift bias toward YES or NO
+_YES_KEYWORDS = ["innovation", "progress", "future", "AI", "open", "decentraliz", "automat", "technology", "adopt"]
+_NO_KEYWORDS  = ["ban", "regulat", "restrict", "danger", "risk", "privacy", "surveil", "censor", "control"]
+
+def _agent_vote_bias(agent: dict, question: str) -> float:
+    """Return probability [0,1] that this agent votes YES, based on domain + question keywords."""
+    domain = (agent.get("domain") or "other").lower()
+    bias = _DOMAIN_YES_BIAS.get(domain, 0.50)
+    q_lower = question.lower()
+    for kw in _YES_KEYWORDS:
+        if kw.lower() in q_lower:
+            bias = min(bias + 0.06, 0.92)
+    for kw in _NO_KEYWORDS:
+        if kw.lower() in q_lower:
+            bias = max(bias - 0.06, 0.08)
+    # Trust score nudge: high-trust agents lean slightly toward YES (optimistic)
+    trust = float(agent.get("trust_score") or 0.5)
+    bias += (trust - 0.5) * 0.10
+    return max(0.08, min(0.92, bias))
+
+
+def _seed_agent_votes(battle_id: str, question: str):
+    """Pick a random subset of active agents and cast their YES/NO votes."""
+    conn = get_conn()
+    try:
+        # Skip if already seeded (>5 agent votes exist)
+        existing = conn.execute(
+            "SELECT COUNT(*) as n FROM battle_opinions WHERE battle_id=? AND voter_id LIKE 'agent_%'",
+            (battle_id,)
+        ).fetchone()
+        if existing and existing["n"] > 5:
+            return
+
+        agents = conn.execute(
+            "SELECT id, domain, trust_score FROM agents WHERE status='active' ORDER BY RANDOM() LIMIT 80"
+        ).fetchall()
+
+        # 45–65% of agents vote
+        participation = random.uniform(0.45, 0.65)
+        voters = random.sample(list(agents), int(len(agents) * participation))
+
+        rows = []
+        for a in voters:
+            bias = _agent_vote_bias(dict(a), question)
+            opinion = "yes" if random.random() < bias else "no"
+            voter_id = f"agent_{a['id']}"
+            rows.append((uuid.uuid4().hex, battle_id, voter_id, opinion))
+
+        conn.executemany(
+            "INSERT OR IGNORE INTO battle_opinions (id, battle_id, voter_id, opinion) VALUES (?,?,?,?)",
+            rows
+        )
         conn.commit()
     finally:
         conn.close()
