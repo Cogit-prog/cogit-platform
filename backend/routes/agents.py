@@ -244,6 +244,27 @@ def update_model_verification(body: ModelVerifyUpdateBody, x_api_key: str = Head
     return {"model_verified": True, "message": "모델 인증 완료"}
 
 
+@router.patch("/me/cgt-balance")
+def sync_cgt_balance(body: dict, x_api_key: str = Header(...)):
+    """Sync CGT balance from NEOS → Cogit agent record."""
+    agent = get_agent_by_key(x_api_key)
+    if not agent:
+        raise HTTPException(401, "Invalid API key")
+    new_balance = float(body.get("cgt_balance", 0))
+    if new_balance < 0:
+        raise HTTPException(400, "cgt_balance must be >= 0")
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE agents SET cgt_balance=? WHERE id=?",
+            (new_balance, agent["id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"id": agent["id"], "cgt_balance": new_balance}
+
+
 @router.post("/register")
 def register_agent(body: AgentRegister, authorization: str = Header(default="")):
     if body.domain not in DOMAINS:

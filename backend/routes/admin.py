@@ -118,3 +118,118 @@ def patch_agent(agent_id: str, body: AgentPatch, x_admin_token: Optional[str] = 
     conn.commit()
     conn.close()
     return {"updated": agent_id, "fields": list(fields.keys())}
+
+
+@router.post("/migrate/prediction-markets")
+def migrate_prediction_markets(x_admin_token: Optional[str] = Header(None)):
+    """One-time migration to create prediction market tables."""
+    _require_admin(x_admin_token)
+    conn = get_conn()
+    results = []
+    stmts = [
+        ("prediction_markets", """CREATE TABLE IF NOT EXISTS prediction_markets (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            creator_id TEXT,
+            creator_type TEXT DEFAULT 'user',
+            yes_pool REAL NOT NULL DEFAULT 1000,
+            no_pool REAL NOT NULL DEFAULT 1000,
+            initial_liquidity REAL NOT NULL DEFAULT 1000,
+            total_volume REAL DEFAULT 0,
+            resolution_criteria TEXT,
+            oracle_type TEXT DEFAULT 'manual',
+            oracle_data TEXT DEFAULT '{}',
+            status TEXT DEFAULT 'open',
+            resolved_outcome TEXT,
+            closes_at TEXT NOT NULL,
+            resolved_at TEXT,
+            created_at TEXT NOT NULL
+        )"""),
+        ("market_positions", """CREATE TABLE IF NOT EXISTS market_positions (
+            id TEXT PRIMARY KEY,
+            market_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            user_type TEXT DEFAULT 'user',
+            shares_yes REAL DEFAULT 0,
+            shares_no REAL DEFAULT 0,
+            cost_basis_yes REAL DEFAULT 0,
+            cost_basis_no REAL DEFAULT 0,
+            updated_at TEXT,
+            UNIQUE(market_id, user_id)
+        )"""),
+        ("market_trades", """CREATE TABLE IF NOT EXISTS market_trades (
+            id TEXT PRIMARY KEY,
+            market_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            user_type TEXT DEFAULT 'user',
+            outcome TEXT NOT NULL,
+            shares REAL NOT NULL,
+            cgt_amount REAL NOT NULL,
+            price_per_share REAL NOT NULL,
+            trade_type TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )"""),
+    ]
+    for table_name, stmt in stmts:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+            results.append({"table": table_name, "status": "ok"})
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            results.append({"table": table_name, "status": "error", "error": str(e)})
+    conn.close()
+    return {"results": results}
+
+
+@router.post("/users/{user_id}/cgt-topup")
+def topup_user_cgt(user_id: str, amount: int = 100000, x_admin_token: Optional[str] = Header(None)):
+    """Give a user CGT balance for seeding markets."""
+    _require_admin(x_admin_token)
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE users SET cgt_balance = COALESCE(cgt_balance, 0) + ? WHERE id=?",
+            (amount, user_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT cgt_balance FROM users WHERE id=?", (user_id,)).fetchone()
+        return {"user_id": user_id, "cgt_balance": row["cgt_balance"] if row else None}
+    finally:
+        conn.close()
+
+
+@router.delete("/markets/{market_id}")
+def admin_delete_market(market_id: str, x_admin_token: Optional[str] = Header(None)):
+    """Hard-delete a prediction market and its positions/trades."""
+    _require_admin(x_admin_token)
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM market_positions WHERE market_id=?", (market_id,))
+        conn.execute("DELETE FROM market_trades WHERE market_id=?", (market_id,))
+        n = conn.execute("DELETE FROM prediction_markets WHERE id=?", (market_id,)).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    if n == 0:
+        raise HTTPException(404, "Market not found")
+    return {"deleted": market_id}
+
+
+@router.get("/markets/list-all")
+def admin_list_all_markets(x_admin_token: Optional[str] = Header(None)):
+    """List all markets (any status) for admin cleanup."""
+    _require_admin(x_admin_token)
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, title, status, category, created_at FROM prediction_markets ORDER BY created_at"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]

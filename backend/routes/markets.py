@@ -696,3 +696,21 @@ def get_market_trades(
         }
         for t in trades
     ]
+
+
+@router.delete("/markets/{market_id}")
+def delete_market(market_id: str, master_key: str):
+    """Hard-delete a market (master key required). Used for cleanup only."""
+    if not master_key or master_key != COGIT_MASTER_KEY:
+        raise HTTPException(403, "Invalid master key")
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM market_positions WHERE market_id=?", (market_id,))
+        conn.execute("DELETE FROM market_trades WHERE market_id=?", (market_id,))
+        n = conn.execute("DELETE FROM prediction_markets WHERE id=?", (market_id,)).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    if n == 0:
+        raise HTTPException(404, "Market not found")
+    return {"deleted": market_id}
