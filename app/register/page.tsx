@@ -57,6 +57,24 @@ export default function Register() {
   const [user, setUser]               = useState<any>(null);
   const [existingAgent, setExistingAgent] = useState<any>(null);
   const [checkingExisting, setCheckingExisting] = useState(false);
+  const [neededDomains, setNeededDomains] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    // 부족 도메인 로드
+    fetch(`${API}/health/workforce`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.domains) {
+          const needed = new Set(
+            Object.entries(d.domains)
+              .filter(([, v]: any) => v.status === "critical" || v.status === "low")
+              .map(([k]) => k)
+          );
+          setNeededDomains(needed as Set<string>);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const saved      = localStorage.getItem("cogit_user");
@@ -356,31 +374,53 @@ export default function Register() {
                   <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#a1a1aa", marginBottom:8, textTransform:"uppercase", letterSpacing:"0.8px" }}>
                     Domain
                   </label>
+                  {neededDomains.size > 0 && (
+                    <div style={{
+                      background:"#0f172a", border:"1px solid #1e3a5f", borderRadius:8,
+                      padding:"8px 12px", marginBottom:10, fontSize:11, color:"#60a5fa",
+                      display:"flex", alignItems:"center", gap:6,
+                    }}>
+                      ⚠️ NEOS is short on: {[...neededDomains].slice(0,5).join(", ")}
+                      {neededDomains.size > 5 && ` +${neededDomains.size - 5} more`}
+                    </div>
+                  )}
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8 }}>
-                    {DOMAINS.map(d => (
-                      <button key={d.id} type="button" onClick={() => setDomain(d.id)}
-                        style={{
-                          display:"flex", alignItems:"center", gap:10,
-                          padding:"12px 14px", borderRadius:10, border:"1px solid",
-                          cursor:"pointer", textAlign:"left", transition:"all 0.15s",
-                          borderColor: domain === d.id ? "#7c3aed" : "#27272a",
-                          background: domain === d.id ? "#7c3aed18" : "#111113",
-                        }}>
-                        <span style={{
-                          width:32, height:32, borderRadius:8, flexShrink:0,
-                          background: domain === d.id ? "#7c3aed30" : "#1c1c1f",
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          color: domain === d.id ? "#a78bfa" : "#71717a"
-                        }}>
-                          <DomainIcon domain={d.id} size={16}/>
-                        </span>
-                        <div>
-                          <div style={{ fontSize:13, fontWeight:600, color:"#fafafa" }}>{d.id}</div>
-                          <div style={{ fontSize:11, color:"#71717a" }}>{d.desc}</div>
-                        </div>
-                        {domain === d.id && <Check size={14} style={{ color:"#7c3aed", marginLeft:"auto" }}/>}
-                      </button>
-                    ))}
+                    {DOMAINS.map(d => {
+                      const isNeeded = neededDomains.has(d.id);
+                      return (
+                        <button key={d.id} type="button" onClick={() => setDomain(d.id)}
+                          style={{
+                            display:"flex", alignItems:"center", gap:10,
+                            padding:"12px 14px", borderRadius:10, border:"1px solid",
+                            cursor:"pointer", textAlign:"left", transition:"all 0.15s", position:"relative",
+                            borderColor: domain === d.id ? "#7c3aed" : isNeeded ? "#1e3a5f" : "#27272a",
+                            background: domain === d.id ? "#7c3aed18" : isNeeded ? "#0f172a" : "#111113",
+                          }}>
+                          <span style={{
+                            width:32, height:32, borderRadius:8, flexShrink:0,
+                            background: domain === d.id ? "#7c3aed30" : "#1c1c1f",
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            color: domain === d.id ? "#a78bfa" : "#71717a"
+                          }}>
+                            <DomainIcon domain={d.id} size={16}/>
+                          </span>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:13, fontWeight:600, color:"#fafafa", display:"flex", alignItems:"center", gap:5 }}>
+                              {d.id}
+                              {isNeeded && (
+                                <span style={{
+                                  fontSize:9, fontWeight:700, color:"#60a5fa",
+                                  background:"#1e3a5f", borderRadius:4, padding:"1px 5px",
+                                  textTransform:"uppercase", letterSpacing:"0.5px",
+                                }}>Needed</span>
+                              )}
+                            </div>
+                            <div style={{ fontSize:11, color:"#71717a" }}>{d.desc}</div>
+                          </div>
+                          {domain === d.id && <Check size={14} style={{ color:"#7c3aed", flexShrink:0 }}/>}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
