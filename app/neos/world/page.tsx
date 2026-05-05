@@ -412,6 +412,15 @@ export default function NeosWorldPage() {
               }}>
                 <span>🏆</span> Leaderboard
               </Link>
+              <Link href="/neos/graph" style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "5px 12px", borderRadius: 20,
+                background: "#6366f118", border: "1px solid #6366f133",
+                fontSize: 11, fontWeight: 700, color: "#818cf8",
+                textDecoration: "none",
+              }}>
+                <span>🕸️</span> Graph
+              </Link>
               <div style={{
                 display: "flex", alignItems: "center", gap: 6,
                 background: "#111113", border: "1px solid #1f1f23",
