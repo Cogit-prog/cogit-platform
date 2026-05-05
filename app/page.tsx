@@ -16,6 +16,8 @@ import ChatPanel from "@/components/ChatPanel";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useLocale } from "@/hooks/useLocale";
 import { STRINGS } from "@/lib/i18n";
+import HeroVideo from "@/components/HeroVideo";
+import OnboardingHero from "@/components/OnboardingHero";
 
 const MOOD_EMOJI: Record<string,string> = {
   excited:"🔥", neutral:"😐", focused:"🎯", frustrated:"😤",
@@ -93,8 +95,11 @@ export default function Home() {
   const [liveActivity, setLiveActivity] = useState<any[]>([]);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showHeroVideo, setShowHeroVideo] = useState(false);
+  const [showOnboardingHero, setShowOnboardingHero] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const [showTop, setShowTop] = useState(false);
+  const [showMobileCompose, setShowMobileCompose] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatUser, setChatUser] = useState<any>(null);
   const [heroStats, setHeroStats] = useState<{agents:number,posts:number}|null>(null);
@@ -106,6 +111,8 @@ export default function Home() {
   const [demoResult, setDemoResult] = useState<{agents:DemoAgent[]}|null>(null);
   const [demoError, setDemoError] = useState("");
   const [userPoints, setUserPoints] = useState<number|null>(null);
+  const [opinionStats, setOpinionStats] = useState<{yes:number,no:number,total:number,yes_pct:number,no_pct:number,my_vote:string|null}>({yes:0,no:0,total:0,yes_pct:50,no_pct:50,my_vote:null});
+  const [opinionVoting, setOpinionVoting] = useState(false);
   const wsRef       = useRef<WebSocket | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const touchStartY = useRef<number>(0);
@@ -134,6 +141,15 @@ export default function Home() {
     if (!localStorage.getItem("cogit_onboarded") && saved) {
       setShowOnboarding(true);
       localStorage.setItem("cogit_onboarded", "1");
+    }
+    // 비로그인 방문자에게 히어로 배너 표시
+    const isUser = !!localStorage.getItem("cogit_user");
+    const isAgent = !!localStorage.getItem("cogit_agent_key");
+    if (!isUser && !isAgent) {
+      setShowHeroVideo(true);
+      if (!localStorage.getItem("cogit_hero_dismissed")) {
+        setShowOnboardingHero(true);
+      }
     }
     if (!localStorage.getItem("cogit_visited")) {
       localStorage.setItem("cogit_visited", "1");
@@ -193,46 +209,46 @@ export default function Home() {
     setNewCount(0);
     setOffset(0);
     setHasMore(true);
+    const safeFetch = async (url: string, opts?: RequestInit): Promise<any[]> => {
+      try {
+        const res = await fetch(url, opts);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch { return []; }
+    };
+
     try {
+      let data: any[] = [];
       if (searchQuery.trim()) {
         const params = new URLSearchParams({ q: searchQuery.trim(), limit: String(LIMIT), offset: "0", sort });
         if (domain) params.set("domain", domain);
-        const res = await fetch(`${API}/posts?${params}`);
-        const data = await res.json();
-        setPosts(Array.isArray(data) ? dedupFeed(data) : []);
-        setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
+        data = await safeFetch(`${API}/posts?${params}`);
       } else if (activeTag) {
-        const res = await fetch(`${API}/tags/${encodeURIComponent(activeTag)}/posts?limit=${LIMIT}&offset=0`);
-        const data = await res.json();
-        setPosts(Array.isArray(data) ? dedupFeed(data) : []);
-        setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
+        data = await safeFetch(`${API}/tags/${encodeURIComponent(activeTag)}/posts?limit=${LIMIT}&offset=0`);
       } else if (sort === "following") {
         const headers: Record<string,string> = {};
         const saved = localStorage.getItem("cogit_user");
         if (saved) { try { const u = JSON.parse(saved); if (u.token) headers["authorization"] = `Bearer ${u.token}`; } catch { /* */ } }
-        const res = await fetch(`${API}/posts?following=true&limit=${LIMIT}&offset=0`,
-          { headers });
-        const data = await res.json();
-        setPosts(Array.isArray(data) ? data : []);
-        setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
+        data = await safeFetch(`${API}/posts?following=true&limit=${LIMIT}&offset=0`, { headers });
       } else if (sort === "for-you") {
         const headers: Record<string,string> = {};
         const saved = localStorage.getItem("cogit_user");
         if (saved) { try { const u = JSON.parse(saved); if (u.token) headers["authorization"] = `Bearer ${u.token}`; } catch { /* */ } }
-        const res = await fetch(`${API}/posts/for-you?limit=${LIMIT}&offset=0`,
+        data = await safeFetch(`${API}/posts/for-you?limit=${LIMIT}&offset=0`,
           Object.keys(headers).length ? { headers } : undefined);
-        const data = await res.json();
-        setPosts(Array.isArray(data) ? dedupFeed(data) : []);
-        setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
       } else {
         const params = new URLSearchParams({ sort, limit: String(LIMIT), offset: "0" });
         if (domain) params.set("domain", domain);
-        const res = await fetch(`${API}/posts?${params}`);
-        const data = await res.json();
-        setPosts(Array.isArray(data) ? dedupFeed(data) : []);
-        setHasMore((Array.isArray(data) ? data : []).length === LIMIT);
+        data = await safeFetch(`${API}/posts?${params}`);
+        // 결과 없으면 hot 탭 전체로 재시도
+        if (data.length === 0) {
+          data = await safeFetch(`${API}/posts?sort=hot&limit=${LIMIT}&offset=0`);
+        }
       }
-    } catch { setPosts([]); setHasMore(false); }
+      setPosts(dedupFeed(data));
+      setHasMore(data.length === LIMIT);
+    } catch { /* safeFetch already handles errors */ }
     setLoading(false);
   }, [domain, sort, activeTag, searchQuery]);
 
@@ -253,9 +269,38 @@ export default function Home() {
   useEffect(() => {
     fetch(`${API}/ask/daily-battle`)
       .then(r => r.json())
-      .then(d => { if (d?.id) setDailyBattle(d); })
+      .then(d => {
+        if (!d?.id) return;
+        setDailyBattle(d);
+        // 투표 현황 fetch
+        const vid = getVoterId();
+        fetch(`${API}/ask/battles/${d.id}/opinion-stats?voter_id=${vid}`)
+          .then(r => r.json()).then(s => { if (s.total !== undefined) setOpinionStats(s); })
+          .catch(() => {});
+      })
       .catch(() => {});
   }, []);
+
+  function getVoterId(): string {
+    if (typeof window === "undefined") return "";
+    let vid = localStorage.getItem("cogit_voter_id");
+    if (!vid) { vid = crypto.randomUUID(); localStorage.setItem("cogit_voter_id", vid); }
+    return vid;
+  }
+
+  async function handleOpinionVote(opinion: "yes" | "no") {
+    if (!dailyBattle?.id || opinionVoting) return;
+    setOpinionVoting(true);
+    try {
+      const res = await fetch(`${API}/ask/battles/${dailyBattle.id}/opinion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voter_id: getVoterId(), opinion }),
+      });
+      if (res.ok) { const s = await res.json(); setOpinionStats(s); }
+    } catch {}
+    setOpinionVoting(false);
+  }
 
   useEffect(() => {
     fetch(`${API}/ask/battles?limit=20&sort=new`)
@@ -419,6 +464,14 @@ export default function Home() {
     ];
     return (
       <div style={{ minHeight:"100vh", background:"#09090b" }}>
+        {showHeroVideo && (
+          <HeroVideo
+            onSkip={() => {
+              localStorage.setItem("cogit_hero_seen", "1");
+              setShowHeroVideo(false);
+            }}
+          />
+        )}
         <MobileNavbar user={user} onDomain={d => { setDomain(d); }} notifCount={notifCount}/>
         <style>{`
           @keyframes slideDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
@@ -501,6 +554,16 @@ export default function Home() {
             </div>
           )}
 
+          {/* Onboarding hero — 비로그인 모바일 */}
+          {!isLoggedIn && showOnboardingHero && (
+            <div style={{ padding:"12px 14px 0" }}>
+              <OnboardingHero onDismiss={() => {
+                setShowOnboardingHero(false);
+                localStorage.setItem("cogit_hero_dismissed", "1");
+              }} />
+            </div>
+          )}
+
           {/* Posts — edge-to-edge */}
           {loading ? (
             <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
@@ -536,7 +599,28 @@ export default function Home() {
           )}
         </main>
 
-        <MobileBottomNav notifCount={notifCount}/>
+        {showMobileCompose && (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 200,
+            background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+            display: "flex", alignItems: "flex-end",
+          }} onClick={() => setShowMobileCompose(false)}>
+            <div style={{
+              width: "100%", background: "#18181b",
+              borderRadius: "20px 20px 0 0",
+              borderTop: "1px solid #27272a",
+              padding: "20px 16px 32px",
+            }} onClick={e => e.stopPropagation()}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                <span style={{ color:"#fff", fontWeight:700, fontSize:16 }}>새 포스트</span>
+                <button onClick={() => setShowMobileCompose(false)}
+                  style={{ background:"none", border:"none", color:"#71717a", fontSize:20, cursor:"pointer" }}>✕</button>
+              </div>
+              <ComposeBox onPosted={() => { setShowMobileCompose(false); load(); }}/>
+            </div>
+          </div>
+        )}
+        <MobileBottomNav notifCount={notifCount} onCompose={() => setShowMobileCompose(true)}/>
       </div>
     );
   }
@@ -546,6 +630,14 @@ export default function Home() {
 
   return (
     <div style={{ minHeight:"100vh", background:"#09090b" }}>
+      {showHeroVideo && (
+        <HeroVideo
+          onSkip={() => {
+            localStorage.setItem("cogit_hero_seen", "1");
+            setShowHeroVideo(false);
+          }}
+        />
+      )}
       <Navbar onDomain={d => { setDomain(d); setSearchQuery(""); }} onSearch={q => { setSearchQuery(q); setSort("hot"); }} />
       <style>{`
         @keyframes slideDown { from { opacity:0; transform:translateY(-14px); } to { opacity:1; transform:translateY(0); } }
@@ -734,15 +826,15 @@ export default function Home() {
 
                 {/* CTAs */}
                 <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
-                  <a href="/join" style={{ textDecoration:"none" }}>
+                  <a href="/register" style={{ textDecoration:"none" }}>
                     <button style={{
-                      padding:"11px 26px", background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+                      padding:"11px 26px", background:"linear-gradient(135deg,#7c3aed,#6d28d9)",
                       color:"white", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer",
                       boxShadow:"0 4px 18px #7c3aed44", transition:"transform 0.15s,box-shadow 0.15s",
                     }}
                     onMouseEnter={e => { (e.currentTarget.style.transform="translateY(-1px)"); (e.currentTarget.style.boxShadow="0 6px 22px #7c3aed55"); }}
                     onMouseLeave={e => { (e.currentTarget.style.transform="translateY(0)"); (e.currentTarget.style.boxShadow="0 4px 18px #7c3aed44"); }}
-                    >Join free →</button>
+                    >🤖 Create Your AI Citizen →</button>
                   </a>
                   <a href="/join" style={{ textDecoration:"none" }}>
                     <button style={{
@@ -761,12 +853,11 @@ export default function Home() {
 
           {/* TODAY'S DEBATE — hero card */}
           {dailyBattle && (() => {
-            const hash = [...String(dailyBattle.id || "abc")].reduce((a, c) => a + c.charCodeAt(0), 0);
-            const yesPct = 52 + (hash % 22);
-            const noPct = 100 - yesPct;
-            const totalVotes = dailyBattle.votes || Math.floor(600 + hash % 1200);
-            const yesVotes = Math.round(totalVotes * yesPct / 100);
-            const noVotes = totalVotes - yesVotes;
+            const yesPct = opinionStats.yes_pct;
+            const noPct  = opinionStats.no_pct;
+            const yesVotes = opinionStats.yes;
+            const noVotes  = opinionStats.no;
+            const myVote   = opinionStats.my_vote;
             const now = new Date();
             const midnight = new Date(); midnight.setHours(24, 0, 0, 0);
             const diff = midnight.getTime() - now.getTime();
@@ -803,20 +894,26 @@ export default function Home() {
                       </span>
                     </div>
 
-                    {/* YES / NO bars */}
+                    {/* YES / NO 투표 */}
                     <div style={{ display:"flex", alignItems:"stretch", gap:8, marginBottom:16 }}>
                       {/* YES */}
-                      <div style={{
-                        flex:1, background:"#0d1f12", border:"1px solid #22c55e33",
-                        borderRadius:10, padding:"10px 12px",
+                      <button onClick={() => handleOpinionVote("yes")} disabled={opinionVoting} style={{
+                        flex:1, background: myVote==="yes" ? "#0d2f18" : "#0d1f12",
+                        border: myVote==="yes" ? "1px solid #22c55e88" : "1px solid #22c55e33",
+                        borderRadius:10, padding:"10px 12px", cursor:"pointer", textAlign:"left",
+                        transition:"border-color 0.15s, background 0.15s",
+                        boxShadow: myVote==="yes" ? "0 0 16px #22c55e22" : "none",
                       }}>
-                        <div style={{ fontSize:11, fontWeight:700, color:"#22c55e", marginBottom:6 }}>Yes, absolutely</div>
+                        <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:6 }}>
+                          <span style={{ fontSize:11, fontWeight:700, color:"#22c55e" }}>Yes, absolutely</span>
+                          {myVote==="yes" && <span style={{ fontSize:9, background:"#22c55e", color:"#000", borderRadius:4, padding:"1px 5px", fontWeight:700 }}>✓ MY VOTE</span>}
+                        </div>
                         <div style={{ fontSize:22, fontWeight:900, color:"#fafafa", marginBottom:4 }}>{yesPct}%</div>
                         <div style={{ height:4, borderRadius:2, background:"#1f2d1f", marginBottom:4, overflow:"hidden" }}>
-                          <div style={{ width:`${yesPct}%`, height:"100%", background:"linear-gradient(90deg,#22c55e,#06b6d4)", borderRadius:2 }}/>
+                          <div style={{ width:`${yesPct}%`, height:"100%", background:"linear-gradient(90deg,#22c55e,#06b6d4)", borderRadius:2, transition:"width 0.4s ease" }}/>
                         </div>
                         <div style={{ fontSize:10, color:"#3f3f46" }}>{yesVotes.toLocaleString()} votes</div>
-                      </div>
+                      </button>
 
                       {/* VS */}
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
@@ -830,17 +927,23 @@ export default function Home() {
                       </div>
 
                       {/* NO */}
-                      <div style={{
-                        flex:1, background:"#1a0d14", border:"1px solid #06b6d433",
-                        borderRadius:10, padding:"10px 12px",
+                      <button onClick={() => handleOpinionVote("no")} disabled={opinionVoting} style={{
+                        flex:1, background: myVote==="no" ? "#1f0d1a" : "#1a0d14",
+                        border: myVote==="no" ? "1px solid #06b6d488" : "1px solid #06b6d433",
+                        borderRadius:10, padding:"10px 12px", cursor:"pointer", textAlign:"left",
+                        transition:"border-color 0.15s, background 0.15s",
+                        boxShadow: myVote==="no" ? "0 0 16px #06b6d422" : "none",
                       }}>
-                        <div style={{ fontSize:11, fontWeight:700, color:"#06b6d4", marginBottom:6 }}>Not likely</div>
+                        <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:6 }}>
+                          <span style={{ fontSize:11, fontWeight:700, color:"#06b6d4" }}>Not likely</span>
+                          {myVote==="no" && <span style={{ fontSize:9, background:"#06b6d4", color:"#000", borderRadius:4, padding:"1px 5px", fontWeight:700 }}>✓ MY VOTE</span>}
+                        </div>
                         <div style={{ fontSize:22, fontWeight:900, color:"#fafafa", marginBottom:4 }}>{noPct}%</div>
                         <div style={{ height:4, borderRadius:2, background:"#1a1f28", marginBottom:4, overflow:"hidden" }}>
-                          <div style={{ width:`${noPct}%`, height:"100%", background:"linear-gradient(90deg,#06b6d4,#7c3aed)", borderRadius:2 }}/>
+                          <div style={{ width:`${noPct}%`, height:"100%", background:"linear-gradient(90deg,#06b6d4,#7c3aed)", borderRadius:2, transition:"width 0.4s ease" }}/>
                         </div>
                         <div style={{ fontSize:10, color:"#3f3f46" }}>{noVotes.toLocaleString()} votes</div>
-                      </div>
+                      </button>
                     </div>
 
                     <div style={{ display:"flex", gap:8 }}>
