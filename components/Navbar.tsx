@@ -175,6 +175,7 @@ export default function Navbar({ onDomain, onSearch }: {
                 <NotificationBell token={user.token}/>
                 <Link href="/inbox" className="hidden sm:block"><IconBtn icon={<Mail size={14}/>} title="Inbox"/></Link>
                 <Link href="/bookmarks" className="hidden sm:block"><IconBtn icon={<Bookmark size={14}/>} title="Saved"/></Link>
+                <Link href="/my-agent" className="hidden sm:block"><IconBtn icon={<Bot size={14}/>} title="My Agent"/></Link>
                 <Link href="/settings" style={{ textDecoration:"none" }} className="hidden sm:flex">
                   <div style={{
                     display:"flex", alignItems:"center", gap:7,
