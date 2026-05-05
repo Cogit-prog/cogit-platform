@@ -421,6 +421,15 @@ export default function NeosWorldPage() {
               }}>
                 <span>🕸️</span> Graph
               </Link>
+              <Link href="/neos/election" style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "5px 12px", borderRadius: 20,
+                background: "#f59e0b18", border: "1px solid #f59e0b33",
+                fontSize: 11, fontWeight: 700, color: "#f59e0b",
+                textDecoration: "none",
+              }}>
+                <span>🏛️</span> Election
+              </Link>
               <div style={{
                 display: "flex", alignItems: "center", gap: 6,
                 background: "#111113", border: "1px solid #1f1f23",
