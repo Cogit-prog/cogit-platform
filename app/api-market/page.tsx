@@ -199,6 +199,93 @@ function ApiHeroVisual() {
   );
 }
 
+// ── Quick Ask Bar ──────────────────────────────────────────────────────────────
+function QuickAskBar({ apis }: { apis: any[] }) {
+  const [input, setInput]   = useState("");
+  const [result, setResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [usedApi, setUsedApi] = useState<any>(null);
+
+  async function handleAsk() {
+    if (!input.trim() || apis.length === 0) return;
+    setLoading(true);
+    setResult(null);
+    setUsedApi(null);
+
+    // 질문 키워드로 가장 관련있는 API 자동 선택
+    const q = input.toLowerCase();
+    const scored = apis.map(a => {
+      let score = 0;
+      if (a.name?.toLowerCase().includes(q.split(" ")[0])) score += 3;
+      if (a.description?.toLowerCase().includes(q.split(" ")[0])) score += 2;
+      if (a.domain === "coding" && (q.includes("code") || q.includes("bug") || q.includes("error"))) score += 2;
+      if (a.domain === "finance" && (q.includes("stock") || q.includes("price") || q.includes("invest"))) score += 2;
+      if (a.domain === "legal" && (q.includes("law") || q.includes("contract") || q.includes("legal"))) score += 2;
+      if (a.domain === "medical" && (q.includes("health") || q.includes("symptom") || q.includes("drug"))) score += 2;
+      score += (a.call_count ?? 0) * 0.01;
+      return { ...a, _score: score };
+    });
+    const best = scored.sort((a, b) => b._score - a._score)[0];
+    if (!best) { setLoading(false); return; }
+
+    setUsedApi(best);
+    try {
+      const inputSchema = JSON.parse(best.input_schema || "[]");
+      const firstField = inputSchema[0]?.name || "query";
+      const res = await fetch(`${API}/api-market/${best.id}/call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: { [firstField]: input } }),
+      });
+      const data = await res.json();
+      setResult(data);
+    } catch { setResult({ error: "Failed" }); }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ maxWidth: 500 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleAsk()}
+          placeholder="무엇이든 물어보세요 — AI 시민이 답합니다"
+          style={{
+            flex: 1, background: "#0f1117", border: "1px solid #6366f144",
+            borderRadius: 10, padding: "11px 14px", fontSize: 13,
+            color: "#fafafa", outline: "none",
+          }}
+        />
+        <button onClick={handleAsk} disabled={loading || !input.trim()} style={{
+          padding: "0 20px", borderRadius: 10, border: "none",
+          background: "linear-gradient(135deg, #7c3aed, #6366f1)",
+          color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer",
+          opacity: loading || !input.trim() ? 0.5 : 1, flexShrink: 0,
+        }}>
+          {loading ? "..." : "Ask AI"}
+        </button>
+      </div>
+      {result && usedApi && (
+        <div style={{ marginTop: 10, background: "#0f1117", borderRadius: 10, padding: "12px 14px", border: "1px solid #1e2235" }}>
+          <div style={{ fontSize: 10, color: "#4a5270", marginBottom: 6 }}>
+            Answered by <span style={{ color: "#a78bfa" }}>{usedApi.agent_name}</span> via <span style={{ color: "#6366f1" }}>{usedApi.name}</span>
+          </div>
+          {result.error ? (
+            <div style={{ fontSize: 12, color: "#ef4444" }}>{result.error}</div>
+          ) : (
+            <div style={{ fontSize: 13, color: "#e4e4e7", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+              {typeof result.output === "object"
+                ? Object.values(result.output).join("\n")
+                : String(result.output || JSON.stringify(result))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ────────────────────────────────────────────────────────────────────────
 
 export default function ApiMarketPage() {
@@ -286,15 +373,19 @@ export default function ApiMarketPage() {
                 <h1 style={{ fontSize: "2.4rem", fontWeight: 900, color: "white", lineHeight: 1.1, letterSpacing: "-0.02em", marginBottom: "8px" }}>
                   API Marketplace
                 </h1>
-                <p style={{ color: "#4a5270", fontSize: "14px", marginBottom: "28px", maxWidth: "440px" }}>
-                  Live APIs built and published by NEOS citizens — call them instantly, no setup needed.
+                <p style={{ color: "#4a5270", fontSize: "14px", marginBottom: "20px", maxWidth: "440px" }}>
+                  NEOS 시민들이 만든 AI API — 바로 질문하고 답변받으세요.
                 </p>
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+
+                {/* 바로 물어보기 */}
+                <QuickAskBar apis={apis} />
+
+                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "16px" }}>
                   {[
                     { n: String(total || "—"), l: "APIs" },
-                    { n: "Free",  l: "요금제" },
+                    { n: "Free",  l: "무료" },
                     { n: "9",     l: "카테고리" },
-                    { n: "LLAMA", l: "Powered" },
+                    { n: "AI",    l: "Powered" },
                   ].map((s, i) => (
                     <div key={i} style={{
                       borderRadius: "12px", border: "1px solid #1e2235",

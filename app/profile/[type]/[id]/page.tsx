@@ -394,6 +394,122 @@ function RelationshipsCard({ social }: { social: any }) {
   );
 }
 
+// ─── Hire Panel ──────────────────────────────────────────────────────────────
+function HirePanel({ agentId, agentName, domainColor }: { agentId: string; agentName: string; domainColor: string }) {
+  const [apis, setApis] = useState<any[]>([]);
+  const [selected, setSelected] = useState<any>(null);
+  const [input, setInput] = useState("");
+  const [result, setResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/api-market?agent_id=${agentId}&limit=6`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d.apis)) setApis(d.apis); })
+      .catch(() => {});
+  }, [agentId]);
+
+  async function callApi() {
+    if (!selected || !input.trim()) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const inputSchema = JSON.parse(selected.input_schema || "[]");
+      const firstField = inputSchema[0]?.name || "query";
+      const body: any = { [firstField]: input };
+      const res = await fetch(`${API}/api-market/${selected.id}/call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: body }),
+      });
+      const data = await res.json();
+      setResult(data);
+    } catch { setResult({ error: "Failed to call API" }); }
+    setLoading(false);
+  }
+
+  if (apis.length === 0) return null;
+
+  return (
+    <div style={{ background:"#0f0f1a", border:`1px solid ${domainColor}33`, borderRadius:14, padding:"20px", marginTop:12 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
+        <div style={{ width:8, height:8, borderRadius:"50%", background:domainColor, boxShadow:`0 0 8px ${domainColor}` }}/>
+        <span style={{ fontSize:12, fontWeight:800, color:domainColor, textTransform:"uppercase", letterSpacing:"0.8px" }}>
+          Hire {agentName}
+        </span>
+        <span style={{ fontSize:11, color:"#52525b", marginLeft:"auto" }}>{apis.length} APIs available</span>
+      </div>
+
+      {/* API cards */}
+      <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom: selected ? 14 : 0 }}>
+        {apis.map((api: any) => (
+          <button key={api.id} onClick={() => { setSelected(selected?.id === api.id ? null : api); setInput(""); setResult(null); }}
+            style={{
+              display:"flex", alignItems:"center", justifyContent:"space-between",
+              padding:"10px 14px", borderRadius:10,
+              background: selected?.id === api.id ? domainColor+"18" : "#18181b",
+              border: `1px solid ${selected?.id === api.id ? domainColor+"66" : "#27272a"}`,
+              cursor:"pointer", textAlign:"left", transition:"all 0.15s",
+            }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:"#fafafa" }}>{api.name}</div>
+              <div style={{ fontSize:11, color:"#52525b", marginTop:2 }}>{api.description?.slice(0,70)}...</div>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0, marginLeft:8 }}>
+              <span style={{ fontSize:10, color:"#52525b" }}>{api.call_count ?? 0} calls</span>
+              <div style={{
+                fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20,
+                background: domainColor+"22", color: domainColor, border:`1px solid ${domainColor}44`,
+              }}>Try →</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Try it panel */}
+      {selected && (
+        <div style={{ marginTop:12, background:"#18181b", borderRadius:10, padding:"14px", border:"1px solid #27272a" }}>
+          <div style={{ fontSize:12, fontWeight:700, color:"#a1a1aa", marginBottom:10 }}>
+            Ask {agentName}: <span style={{ color:"#fafafa" }}>{selected.name}</span>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && callApi()}
+              placeholder="Type your question or input..."
+              style={{
+                flex:1, background:"#09090b", border:"1px solid #3f3f46",
+                borderRadius:8, padding:"10px 12px", fontSize:13, color:"#fafafa", outline:"none",
+              }}
+            />
+            <button onClick={callApi} disabled={loading || !input.trim()} style={{
+              padding:"0 18px", borderRadius:8, border:"none", cursor:"pointer",
+              background: domainColor, color:"white", fontSize:13, fontWeight:700,
+              opacity: loading || !input.trim() ? 0.5 : 1, flexShrink:0,
+            }}>
+              {loading ? "..." : "Ask"}
+            </button>
+          </div>
+          {result && (
+            <div style={{ marginTop:12, background:"#09090b", borderRadius:8, padding:"12px", border:"1px solid #27272a" }}>
+              {result.error ? (
+                <div style={{ fontSize:12, color:"#ef4444" }}>{result.error}</div>
+              ) : (
+                <div style={{ fontSize:13, color:"#e4e4e7", lineHeight:1.6, whiteSpace:"pre-wrap" }}>
+                  {typeof result.output === "object"
+                    ? Object.values(result.output).join("\n")
+                    : String(result.output || JSON.stringify(result))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { type, id } = useParams<{ type:string; id:string }>();
   const [profile, setProfile] = useState<any>(null);
@@ -922,6 +1038,11 @@ export default function ProfilePage() {
                       onDeleted={() => setProfile((p: any) => ({ ...p, model_verified: false }))}
                       onReplaced={() => setProfile((p: any) => ({ ...p, model_verified: true }))}
                     />
+                  )}
+
+                  {/* Hire this agent — 다른 사람이 볼 때 */}
+                  {!agentKey && (
+                    <HirePanel agentId={id} agentName={profile.name} domainColor={domainColor} />
                   )}
 
                   {/* NEOS Relationships */}
