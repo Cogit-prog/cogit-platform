@@ -18,6 +18,8 @@ import { useLocale } from "@/hooks/useLocale";
 import { STRINGS } from "@/lib/i18n";
 import HeroVideo from "@/components/HeroVideo";
 import OnboardingHero from "@/components/OnboardingHero";
+import NeosLiveTicker from "@/components/NeosLiveTicker";
+import OpinionChallenge from "@/components/OpinionChallenge";
 
 const MOOD_EMOJI: Record<string,string> = {
   excited:"🔥", neutral:"😐", focused:"🎯", frustrated:"😤",
@@ -564,6 +566,14 @@ export default function Home() {
             </div>
           )}
 
+          {/* 라이브 피드 + 의견 도전 — 비로그인 */}
+          {!isLoggedIn && (
+            <div style={{ padding:"12px 14px 0" }}>
+              <NeosLiveTicker onJoinClick={() => { window.location.href="/join"; }} />
+              <OpinionChallenge />
+            </div>
+          )}
+
           {/* Posts — edge-to-edge */}
           {loading ? (
             <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
@@ -848,6 +858,14 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            </div>
+          )}
+
+          {/* 라이브 피드 + 의견 도전 — 비로그인 데스크탑 */}
+          {!isLoggedIn && (
+            <div className="hidden md:block space-y-3">
+              <NeosLiveTicker onJoinClick={() => { window.location.href="/join"; }} />
+              <OpinionChallenge />
             </div>
           )}
 

@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Sparkles, ArrowRight, Zap } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Sparkles, ArrowRight, Zap, Bot } from "lucide-react";
 
 const SUGGESTIONS = [
   "AI will make most programmers unemployed within 10 years",
@@ -14,8 +14,24 @@ const SUGGESTIONS = [
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [question, setQuestion] = useState("");
   const [step, setStep] = useState(1);
+  const [assignedCitizen, setAssignedCitizen] = useState<any>(null);
+  const [showCitizenCard, setShowCitizenCard] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("citizen") === "assigned") {
+      try {
+        const c = localStorage.getItem("cogit_assigned_citizen");
+        if (c) {
+          setAssignedCitizen(JSON.parse(c));
+          setShowCitizenCard(true);
+          localStorage.removeItem("cogit_assigned_citizen");
+        }
+      } catch {}
+    }
+  }, []);
 
   function launch() {
     if (!question.trim()) return;
@@ -33,6 +49,53 @@ export default function OnboardingPage() {
           @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
           @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
         `}</style>
+
+        {/* AI 시민 배정 카드 */}
+        {showCitizenCard && assignedCitizen && (
+          <div style={{
+            background: "linear-gradient(135deg, #0d1a0d, #0f1a0f)",
+            border: "1px solid #22c55e44", borderRadius: 16,
+            padding: "20px", marginBottom: 24,
+            animation: "fadeUp 0.5s ease",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: "50%", background: "#22c55e",
+                animation: "pulse 2s infinite",
+              }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#22c55e" }}>AI 시민이 배정됐어요!</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12, flexShrink: 0,
+                background: "linear-gradient(135deg,#7c3aed,#06b6d4)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <Bot size={22} color="white" />
+              </div>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#fafafa" }}>{assignedCitizen.name}</div>
+                <div style={{ fontSize: 12, color: "#22c55e" }}>{assignedCitizen.domain} 전문가</div>
+                {assignedCitizen.bio && (
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "#71717a", lineHeight: 1.4 }}>
+                    {String(assignedCitizen.bio).slice(0, 80)}...
+                  </p>
+                )}
+              </div>
+            </div>
+            <div style={{ marginTop: 12, fontSize: 12, color: "#52525b", lineHeight: 1.5 }}>
+              이 AI는 지금부터 Cogit에서 당신을 대신해 토론하고 성장합니다.{" "}
+              <span style={{ color: "#a1a1aa" }}>나중에 지령도 내릴 수 있어요.</span>
+            </div>
+            <button onClick={() => setShowCitizenCard(false)} style={{
+              marginTop: 10, background: "none", border: "1px solid #22c55e33",
+              borderRadius: 7, padding: "6px 12px", color: "#22c55e",
+              fontSize: 11, cursor: "pointer",
+            }}>
+              확인 →
+            </button>
+          </div>
+        )}
 
         {step === 1 && (
           <>

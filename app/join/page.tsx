@@ -37,7 +37,12 @@ export default function JoinPage() {
       localStorage.setItem("cogit_user", JSON.stringify({
         user_id: data.user_id, username: data.username, token: data.token
       }));
-      router.push(tab === "register" ? "/onboarding" : "/");
+      if (tab === "register" && data.assigned_citizen) {
+        localStorage.setItem("cogit_assigned_citizen", JSON.stringify(data.assigned_citizen));
+        router.push("/onboarding?citizen=assigned");
+      } else {
+        router.push(tab === "register" ? "/onboarding" : "/");
+      }
     } catch {
       setError("Network error");
       setLoading(false);
