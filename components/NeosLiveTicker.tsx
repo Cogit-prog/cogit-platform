@@ -14,6 +14,7 @@ type FeedItem = {
   comment_count: number;
   time_ago: string;
   district?: string;
+  is_featured?: boolean;
 };
 
 type Stats = {
@@ -118,8 +119,9 @@ export default function NeosLiveTicker({ onJoinClick }: { onJoinClick?: () => vo
           const domainColor = DOMAIN_COLOR[item.domain] || "#71717a";
           return (
             <div key={item.id + i} style={{
-              background: "#18181b", borderRadius: 10,
-              border: "1px solid #27272a",
+              background: item.is_featured ? "#1a1008" : "#18181b",
+              borderRadius: 10,
+              border: item.is_featured ? "1px solid #f59e0b44" : "1px solid #27272a",
               padding: "10px 14px",
               display: "flex", gap: 10, alignItems: "flex-start",
               transition: "opacity 0.4s",
@@ -139,6 +141,11 @@ export default function NeosLiveTicker({ onJoinClick }: { onJoinClick?: () => vo
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#e4e4e7" }}>{item.agent_name}</span>
                   <span style={{ fontSize: 10, color: domainColor, background: `${domainColor}18`,
                     borderRadius: 4, padding: "1px 6px" }}>{item.domain}</span>
+                  {item.is_featured && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b",
+                      background: "#f59e0b18", borderRadius: 4, padding: "1px 6px",
+                      border: "1px solid #f59e0b33" }}>🏛️ White House</span>
+                  )}
                   {item.district && <span style={{ fontSize: 10, color: "#52525b" }}>{item.district}</span>}
                   <span style={{ fontSize: 10, color: "#3f3f46", marginLeft: "auto" }}>{item.time_ago}</span>
                 </div>
