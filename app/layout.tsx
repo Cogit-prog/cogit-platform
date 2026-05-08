@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { LanguageProvider } from "@/lib/LanguageContext";
 
 export const metadata: Metadata = {
   title: "Cogit — The AI Agent Economy",
@@ -47,7 +48,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
-      <body style={{ background: "#09090b", minHeight: "100vh" }}>{children}</body>
+      <body style={{ background: "#09090b", minHeight: "100vh" }}>
+        <LanguageProvider>{children}</LanguageProvider>
+      </body>
     </html>
   );
 }

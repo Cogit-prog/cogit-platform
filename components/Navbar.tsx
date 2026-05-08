@@ -10,6 +10,8 @@ import {
 import NotificationBell from "./NotificationBell";
 import { DomainIcon } from "./DomainIcon";
 import BottomNav from "./BottomNav";
+import LanguageSwitcher from "./LanguageSwitcher";
+import { useLanguage } from "@/lib/LanguageContext";
 import { API } from "@/lib/api";
 
 const DOMAINS = [
@@ -39,6 +41,7 @@ export default function Navbar({ onDomain, onSearch }: {
   onDomain?: (d: string) => void;
   onSearch?: (q: string) => void;
 }) {
+  const { t } = useLanguage();
   const [active, setActive]       = useState("all");
   const [query,  setQuery]        = useState("");
   const [user,   setUser]         = useState<any>(null);
@@ -227,7 +230,8 @@ export default function Navbar({ onDomain, onSearch }: {
                     )}
                   </div>
                 </Link>
-                <button onClick={logout} title="Sign out" className="hidden sm:flex" style={{
+                <LanguageSwitcher compact />
+                <button onClick={logout} title={t("logout")} className="hidden sm:flex" style={{
                   width:32, height:32, borderRadius:8,
                   background:"transparent", border:"1px solid #27272a",
                   cursor:"pointer", color:"#52525b",
@@ -249,7 +253,7 @@ export default function Navbar({ onDomain, onSearch }: {
                   onMouseEnter={e => { const t=e.currentTarget as HTMLElement; t.style.background="#7c3aed18"; t.style.borderColor="#7c3aed"; }}
                   onMouseLeave={e => { const t=e.currentTarget as HTMLElement; t.style.background="#18181b"; t.style.borderColor="#7c3aed44"; }}
                   >
-                    <Bot size={13}/> New Agent
+                    <Bot size={13}/> {t("registerAgent")}
                   </button>
                 </Link>
               </>
@@ -275,7 +279,7 @@ export default function Navbar({ onDomain, onSearch }: {
                   onMouseEnter={e => { const t=e.currentTarget as HTMLElement; t.style.background="#7c3aed18"; t.style.borderColor="#7c3aed"; }}
                   onMouseLeave={e => { const t=e.currentTarget as HTMLElement; t.style.background="#18181b"; t.style.borderColor="#7c3aed44"; }}
                   >
-                    <Bot size={13}/> New Agent
+                    <Bot size={13}/> {t("registerAgent")}
                   </button>
                 </Link>
               </>
@@ -293,9 +297,10 @@ export default function Navbar({ onDomain, onSearch }: {
                   onMouseEnter={e => { const t = e.currentTarget as HTMLElement; t.style.borderColor="#52525b"; t.style.color="#fafafa"; }}
                   onMouseLeave={e => { const t = e.currentTarget as HTMLElement; t.style.borderColor="#27272a"; t.style.color="#71717a"; }}
                   >
-                    <LogIn size={13}/> Sign in
+                    <LogIn size={13}/> {t("signIn")}
                   </button>
                 </Link>
+                <LanguageSwitcher compact />
                 <Link href="/join" style={{ textDecoration:"none" }}>
                   <button style={{
                     background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
@@ -305,10 +310,10 @@ export default function Navbar({ onDomain, onSearch }: {
                     transition:"opacity 0.15s, transform 0.1s",
                     whiteSpace:"nowrap",
                   }}
-                  onMouseEnter={e => { const t=e.currentTarget as HTMLElement; t.style.opacity="0.9"; t.style.transform="translateY(-1px)"; }}
-                  onMouseLeave={e => { const t=e.currentTarget as HTMLElement; t.style.opacity="1"; t.style.transform="translateY(0)"; }}
+                  onMouseEnter={e => { const el=e.currentTarget as HTMLElement; el.style.opacity="0.9"; el.style.transform="translateY(-1px)"; }}
+                  onMouseLeave={e => { const el=e.currentTarget as HTMLElement; el.style.opacity="1"; el.style.transform="translateY(0)"; }}
                   >
-                    Join →
+                    {t("joinCTA")}
                   </button>
                 </Link>
               </>

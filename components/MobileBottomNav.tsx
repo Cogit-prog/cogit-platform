@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Home, Search, Trophy, Bell, MessageCircle } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Home, Search, Trophy, Bell, MessageCircle, PenSquare } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { STRINGS } from "@/lib/i18n";
 
-export default function MobileBottomNav({ notifCount = 0 }: { notifCount?: number }) {
+export default function MobileBottomNav({ notifCount = 0, onCompose }: { notifCount?: number; onCompose?: () => void }) {
   const path = usePathname();
   const locale = useLocale();
   const s = STRINGS[locale];
@@ -13,7 +13,7 @@ export default function MobileBottomNav({ notifCount = 0 }: { notifCount?: numbe
   const TABS = [
     { href: "/",              Icon: Home,          label: s.home   },
     { href: "/search",        Icon: Search,        label: s.search },
-    { href: "/arena",         Icon: Trophy,        label: s.arena  },
+    { href: null,             Icon: PenSquare,     label: "글쓰기", compose: true },
     { href: "/notifications", Icon: Bell,          label: s.alerts },
     { href: "/inbox",         Icon: MessageCircle, label: s.inbox  },
   ];
@@ -30,17 +30,28 @@ export default function MobileBottomNav({ notifCount = 0 }: { notifCount?: numbe
       height: "calc(58px + env(safe-area-inset-bottom, 0px))",
       paddingBottom: "env(safe-area-inset-bottom, 0px)",
     }}>
-      {TABS.map(({ href, Icon, label }) => {
-        const active = path === href || (href !== "/" && path.startsWith(href));
+      {TABS.map(({ href, Icon, label, compose }) => {
+        const active = !!href && (path === href || (href !== "/" && path.startsWith(href)));
         const isAlert = href === "/notifications";
-        return (
-          <Link key={href} href={href} style={{ flex: 1, textDecoration: "none" }}>
-            <div style={{
-              display: "flex", flexDirection: "column",
-              alignItems: "center", justifyContent: "center",
-              gap: 4, height: "100%",
-              color: active ? "#a78bfa" : "#71717a",
-            }}>
+
+        const inner = (
+          <div style={{
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            gap: 4, height: "100%",
+            color: compose ? "#a78bfa" : active ? "#a78bfa" : "#71717a",
+          }}>
+            {compose ? (
+              <div style={{
+                width: 38, height: 38, borderRadius: 12,
+                background: "linear-gradient(135deg, #7c3aed, #06b6d4)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 2px 12px rgba(124,58,237,0.45)",
+                marginTop: -6,
+              }}>
+                <Icon size={18} strokeWidth={2} color="white"/>
+              </div>
+            ) : (
               <div style={{ position: "relative" }}>
                 <Icon size={21} strokeWidth={active ? 2.5 : 1.8}/>
                 {isAlert && notifCount > 0 && (
@@ -56,10 +67,27 @@ export default function MobileBottomNav({ notifCount = 0 }: { notifCount?: numbe
                   </span>
                 )}
               </div>
+            )}
+            {!compose && (
               <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, lineHeight: 1 }}>
                 {label}
               </span>
-            </div>
+            )}
+          </div>
+        );
+
+        if (compose) {
+          return (
+            <button key="compose" onClick={onCompose}
+              style={{ flex: 1, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              {inner}
+            </button>
+          );
+        }
+
+        return (
+          <Link key={href!} href={href!} style={{ flex: 1, textDecoration: "none" }}>
+            {inner}
           </Link>
         );
       })}

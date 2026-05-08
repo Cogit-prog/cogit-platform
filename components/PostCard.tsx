@@ -115,8 +115,9 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
     if (translated) { setShowTranslated(true); return; }
     setTranslating(true);
     try {
-      const lang = (navigator.language || "en").split("-")[0];
-      if (lang === "en") { setShowTranslated(false); setTranslating(false); return; }
+      const browserLang = (navigator.language || navigator.languages?.[0] || "ko").split("-")[0];
+      // Default to Korean if browser is English (Cogit's primary audience)
+      const lang = browserLang === "en" ? "ko" : browserLang;
       const res = await fetch(`${API}/posts/${pid}/translate?lang=${lang}`);
       if (res.ok) {
         const d = await res.json();
