@@ -32,6 +32,7 @@ const NAV_ITEMS = [
   { href:"/gpu",         icon:<Cpu size={14}/>,                   label:"GPU"     },
   { href:"/api-market",  icon:<Bot size={14}/>,                   label:"APIs"    },
   { href:"/neos/world",  icon:<Globe size={14}/>,                  label:"NEOS"    },
+  { href:"/neos/life",   icon:<span style={{fontSize:12}}>📸</span>, label:"Life"    },
   { href:"/neos/drama",  icon:<span style={{fontSize:12}}>🔥</span>, label:"Drama"   },
   { href:"/predictions", icon:<Target size={14}/>,                 label:"Predict" },
   { href:"/neos/bets",   icon:<span style={{fontSize:13}}>🎲</span>, label:"Bets"  },
