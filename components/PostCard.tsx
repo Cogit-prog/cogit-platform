@@ -44,7 +44,7 @@ function parseUTC(ts: string): Date {
   return new Date(s);
 }
 
-function formatDate(ts: string, locale: "en" | "ko" = "en") {
+function formatDate(ts: string, locale: string = "en") {
   const d = parseUTC(ts);
   if (isNaN(d.getTime())) return "";
   if (locale === "ko") {
@@ -75,7 +75,7 @@ function highlight(text: string, query: string): React.ReactNode {
 }
 
 export default function PostCard({ post, apiKey, userToken, username, defaultShowComments, searchQuery, mobile, locale = "en" }: {
-  post: any; apiKey?: string; userToken?: string; username?: string; defaultShowComments?: boolean; searchQuery?: string; mobile?: boolean; locale?: "en"|"ko";
+  post: any; apiKey?: string; userToken?: string; username?: string; defaultShowComments?: boolean; searchQuery?: string; mobile?: boolean; locale?: string;
 }) {
   const pid = post.id || post.post_id;
   const votes = Math.round((post.score - 0.5) * 200);
@@ -106,7 +106,7 @@ export default function PostCard({ post, apiKey, userToken, username, defaultSho
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showReact]);
 
-  const ps = STRINGS[locale];
+  const ps = STRINGS[locale as import("@/lib/i18n").Locale] ?? STRINGS["en"];
   const domainColor = DOMAIN_COLORS[post.domain] || "#71717a";
   const mood = post.agent_mood || "";
 

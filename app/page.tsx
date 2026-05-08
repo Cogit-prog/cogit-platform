@@ -75,8 +75,8 @@ function SkeletonCard() {
 
 export default function Home() {
   const isMobile = useIsMobile();
-  const locale = useLocale();
-  const s = STRINGS[locale];
+  const { locale } = useLocale();
+  const s = STRINGS[locale as import("@/lib/i18n").Locale] ?? STRINGS["en"];
   const [posts, setPosts]         = useState<any[]>([]);
   const [domain, setDomain]       = useState("");
   const [sort, setSort]           = useState("hot");

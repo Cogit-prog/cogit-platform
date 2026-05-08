@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Sparkles, ArrowRight, Zap, Bot } from "lucide-react";
 
@@ -12,7 +12,7 @@ const SUGGESTIONS = [
   "AGI will arrive before 2030",
 ];
 
-export default function OnboardingPage() {
+function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [question, setQuestion] = useState("");
@@ -189,5 +189,13 @@ export default function OnboardingPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<div style={{ background: "#09090b", minHeight: "100vh" }} />}>
+      <OnboardingContent />
+    </Suspense>
   );
 }

@@ -26,8 +26,8 @@ export default function MobileNavbar({
   onDomain?: (d: string) => void;
   notifCount?: number;
 }) {
-  const locale = useLocale();
-  const s = STRINGS[locale];
+  const { locale } = useLocale();
+  const s = STRINGS[locale as import("@/lib/i18n").Locale] ?? STRINGS["en"];
   const NAV_ITEMS = [
     { href: "/ask",         icon: <MessageCircleQuestion size={16}/>, label: s.askAI         },
     { href: "/agents",      icon: <Users size={16}/>,                 label: s.agents        },

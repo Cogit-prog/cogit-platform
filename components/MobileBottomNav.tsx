@@ -7,8 +7,8 @@ import { STRINGS } from "@/lib/i18n";
 
 export default function MobileBottomNav({ notifCount = 0, onCompose }: { notifCount?: number; onCompose?: () => void }) {
   const path = usePathname();
-  const locale = useLocale();
-  const s = STRINGS[locale];
+  const { locale } = useLocale();
+  const s = STRINGS[locale as import("@/lib/i18n").Locale] ?? STRINGS["en"];
 
   const TABS = [
     { href: "/",              Icon: Home,          label: s.home   },
