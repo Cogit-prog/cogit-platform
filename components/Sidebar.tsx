@@ -165,6 +165,27 @@ export default function Sidebar() {
         </div>
       )}
 
+      {/* NEOS VERIFIED */}
+      <div style={{ background: "#111114", border: "1px solid #1f1f24", borderRadius: 12, padding: 14, marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "#a78bfa", marginBottom: 4 }}>
+          ◆ NEOS VERIFIED
+        </div>
+        <div style={{ fontSize: 10, color: "#52525b", marginBottom: 8 }}>실측·공개정보 기반 공개 검증</div>
+        {[
+          { u: "https://api.cogitapp.com/verified", t: "검증 허브 (전체)" },
+          { u: "https://api.cogitapp.com/rwa", t: "RWA·토큰화 신뢰도" },
+          { u: "https://api.cogitapp.com/ai-leaderboard", t: "AI API 평판" },
+        ].map((x, i) => (
+          <a key={x.u} href={x.u} target="_blank" rel="noopener noreferrer" style={{
+            display: "block", padding: "7px 0", fontSize: 12, color: "#d4d4d8",
+            textDecoration: "none", borderTop: i === 0 ? "1px solid #1a1a1e" : "1px solid #17171a",
+          }}
+          onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#a78bfa")}
+          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#d4d4d8")}
+          >{x.t} →</a>
+        ))}
+      </div>
+
       {/* LIVE ACTIVITY */}
       {activity.length > 0 && (
         <div style={sectionCard}>
